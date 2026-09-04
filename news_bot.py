@@ -114,6 +114,9 @@ def fetch_and_send():
     new_links = set()
     new_titles = set()
 
+    # کلماتی که نشان‌دهنده خطا هستند
+    error_keywords = ["error", "500", "server", "not found", "404", "خطا", "مشکل"]
+
     for source_name, feed_url in RSS_FEEDS:
         print(f"Checking feed: {source_name} - {feed_url}")
         try:
@@ -122,30 +125,44 @@ def fetch_and_send():
             print(f"Feed parse error for {source_name}: {e}")
             continue
 
-        for entry in feed.entries[:5]:  # از هر منبع ۵ خبر
+        # اگر فید خطای ساختاری داشته باشد (مثلاً HTML باشد)
+        if feed.bozo:
+            print(f"Feed {source_name} has bozo error, skipping.")
+            continue
+
+        # اگر هیچ خبری در فید نبود
+        if not feed.entries:
+            print(f"Feed {source_name} returned no entries.")
+            continue
+
+        for entry in feed.entries[:5]:
             link = entry.get("link", "")
             title = entry.get("title", "بدون عنوان")
             if not link:
                 continue
 
+            # بررسی عنوان برای تشخیص خطا
+            if any(keyword in title.lower() for keyword in error_keywords):
+                print(f"Skipped (error-like title): {title}")
+                continue
+
             # ترجمه عنوان
             translated_title = translate_text(title)
 
-            # فیلتر اخبار نامطلوب
+            # فیلتر اخبار نامطلوب (همان کلمات قبلی)
             if is_unwanted(title, translated_title):
                 print(f"Skipped (unwanted): {title}")
                 continue
 
-            # تشخیص تکراری بر اساس عنوان نرمال‌شده
+            # تشخیص تکراری
             norm_title = normalize_title(translated_title if translated_title else title)
             if norm_title in sent_titles:
                 print(f"Skipped (duplicate): {title}")
                 continue
 
-            # گرفتن خلاصه خبر
+            # گرفتن خلاصه
             summary = entry.get("summary", entry.get("description", ""))
             summary = clean_html(summary)
-            # کوتاه‌کردن خلاصه به ۳۰۰ کاراکتر
             if len(summary) > 300:
                 summary = summary[:300] + "..."
             translated_summary = translate_text(summary) if summary else ""
@@ -166,7 +183,7 @@ def fetch_and_send():
             else:
                 print(f"Failed to send: {title}")
 
-    # ذخیره لینک‌ها و عنوان‌های ارسال‌شده
+    # ذخیره
     sent_links.update(new_links)
     sent_titles.update(new_titles)
     save_set_to_file(SENT_LINKS_FILE, sent_links)
