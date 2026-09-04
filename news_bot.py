@@ -120,7 +120,6 @@ def is_duplicate_title(new_title, existing_titles, threshold=0.85):
     return False
 
 def is_important(title, translated_title, summary=""):
-    """فقط اخبار مهم را انتخاب می‌کند"""
     combined_text = (title + " " + translated_title + " " + summary).lower()
     for keyword in IMPORTANT_KEYWORDS:
         if keyword in combined_text:
@@ -128,8 +127,6 @@ def is_important(title, translated_title, summary=""):
     return False
 
 def extract_image_url(entry):
-    """استخراج لینک عکس از entry فید"""
-    # روش‌های مختلف برای پیدا کردن عکس
     if 'media_content' in entry:
         for media in entry.media_content:
             if 'url' in media:
@@ -142,7 +139,6 @@ def extract_image_url(entry):
         for enc in entry.enclosures:
             if 'url' in enc and enc.get('type', '').startswith('image'):
                 return enc['url']
-    # جستجو در description یا summary برای تگ img
     summary = entry.get('summary', entry.get('description', ''))
     img_pattern = r'<img[^>]+src=["\'](.*?)["\']'
     match = re.search(img_pattern, summary)
@@ -150,27 +146,16 @@ def extract_image_url(entry):
         return match.group(1)
     return None
 
-def send_telegram_photo(photo_url, caption):
-    """ارسال عکس با کپشن"""
-    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "photo": photo_url,
-        "caption": caption,
-    }
-    try:
-        response = requests.post(api_url, data=payload)
-        response.raise_for_status()
-        return True
-    except Exception as e:
-        print(f"Error sending photo: {e}")
-        return False
+def escape_html(text):
+    """فرار دادن کاراکترهای خاص HTML"""
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
         "text": text,
+        "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
     try:
@@ -179,6 +164,22 @@ def send_telegram_message(text):
         return True
     except Exception as e:
         print(f"Error sending message: {e}")
+        return False
+
+def send_telegram_photo(photo_url, caption):
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
+    try:
+        response = requests.post(api_url, data=payload)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"Error sending photo: {e}")
         return False
 
 def fetch_and_send():
@@ -205,7 +206,6 @@ def fetch_and_send():
             print(f"Feed {source_name} returned no entries.")
             continue
 
-        # از هر منبع فقط ۲ خبر اول مهم را بررسی می‌کنیم
         count_sent_from_source = 0
         for entry in feed.entries:
             if count_sent_from_source >= 2:
@@ -232,7 +232,6 @@ def fetch_and_send():
                 summary = summary[:300] + "..."
             translated_summary = translate_text(summary) if summary else ""
 
-            # فیلتر اهمیت خبر
             if not is_important(title, translated_title, translated_summary):
                 print(f"Skipped (not important): {title}")
                 continue
@@ -243,13 +242,15 @@ def fetch_and_send():
                 print(f"Skipped (duplicate): {title}")
                 continue
 
-            # استخراج عکس
             image_url = extract_image_url(entry)
 
-            # ساخت کپشن
-            caption = f"📰 [{source_name}] {translated_title}\n"
-            if translated_summary:
-                caption += f"📝 {translated_summary}\n"
+            # آماده‌سازی متن با HTML و فرار از کاراکترها
+            title_escaped = escape_html(translated_title)
+            summary_escaped = escape_html(translated_summary) if translated_summary else ""
+
+            caption = f"<b>📰 [{source_name}] {title_escaped}</b>\n\n"
+            if summary_escaped:
+                caption += f"📝 {summary_escaped}\n\n"
             short_link = shorten_url(link)
             caption += f"🔗 {short_link}"
 
@@ -262,7 +263,6 @@ def fetch_and_send():
                     count_sent_from_source += 1
                     time.sleep(2)
                 else:
-                    # اگر ارسال عکس ناموفق بود، پیام متنی بفرست
                     if send_telegram_message(caption):
                         print(f"Sent text (photo failed): {translated_title}")
                         new_links.add(link)
