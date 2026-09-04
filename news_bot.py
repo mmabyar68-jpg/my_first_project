@@ -52,6 +52,13 @@ def save_set_to_file(filename, data_set):
     with open(filename, "w", encoding="utf-8") as f:
         for item in data_set:
             f.write(item + "\n")
+            def is_duplicate_title(new_title, existing_titles, threshold=0.85):
+    """بررسی شباهت عنوان جدید با عنوان‌های قبلی"""
+    for old_title in existing_titles:
+        similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
+        if similarity >= threshold:
+            return True
+    return False
 
 def translate_text(text):
     try:
@@ -108,6 +115,7 @@ def send_telegram_message(text):
     except Exception as e:
         print(f"Error sending message: {e}")
         return False
+        
 
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
