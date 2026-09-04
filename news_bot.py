@@ -3,9 +3,9 @@ import requests
 import os
 import time
 import re
+import difflib
 from deep_translator import GoogleTranslator
 import pyshorteners
-import difflib
 
 # ---------- تنظیمات ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -29,7 +29,7 @@ RSS_FEEDS = [
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
 
-# لیست کلمات نامطلوب (انگلیسی و فارسی)
+# لیست کلمات نامطلوب
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show"
@@ -52,13 +52,17 @@ def save_set_to_file(filename, data_set):
     with open(filename, "w", encoding="utf-8") as f:
         for item in data_set:
             f.write(item + "\n")
-            def is_duplicate_title(new_title, existing_titles, threshold=0.85):
-    """بررسی شباهت عنوان جدید با عنوان‌های قبلی"""
-    for old_title in existing_titles:
-        similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
-        if similarity >= threshold:
-            return True
-    return False
+
+def load_list_from_file(filename):
+    if not os.path.exists(filename):
+        return []
+    with open(filename, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+def save_list_to_file(filename, data_list):
+    with open(filename, "w", encoding="utf-8") as f:
+        for item in data_list:
+            f.write(item + "\n")
 
 def translate_text(text):
     try:
@@ -77,27 +81,30 @@ def shorten_url(url):
         return url
 
 def clean_html(raw_html):
-    """حذف تگ‌های HTML از متن"""
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext.strip()
 
 def normalize_title(title):
-    """نرمال‌سازی عنوان برای تشخیص تکراری‌ها"""
-    # حذف علائم نگارشی و فاصله‌های اضافی
     title = re.sub(r'[^\w\s]', '', title, flags=re.UNICODE)
     title = re.sub(r'\s+', ' ', title).strip().lower()
-    # برای دقت بیشتر، فقط ۶۰ کاراکتر اول
     return title[:60]
 
 def is_unwanted(title, translated_title=""):
-    """بررسی وجود کلمات نامطلوب در عنوان اصلی و ترجمه‌شده"""
     lower_title = title.lower()
     for word in EN_BLACKLIST:
         if word in lower_title:
             return True
     for word in FA_BLACKLIST:
         if word in title or word in translated_title:
+            return True
+    return False
+
+def is_duplicate_title(new_title, existing_titles, threshold=0.85):
+    """بررسی شباهت عنوان جدید با عنوان‌های قبلی"""
+    for old_title in existing_titles:
+        similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
+        if similarity >= threshold:
             return True
     return False
 
@@ -115,31 +122,13 @@ def send_telegram_message(text):
     except Exception as e:
         print(f"Error sending message: {e}")
         return False
-        def load_list_from_file(filename):
-    if not os.path.exists(filename):
-        return []
-    with open(filename, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
-
-def save_list_to_file(filename, data_list):
-    with open(filename, "w", encoding="utf-8") as f:
-        for item in data_list:
-            f.write(item + "\n")
-
-def is_duplicate_title(new_title, existing_titles, threshold=0.85):
-    for old_title in existing_titles:
-        similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
-        if similarity >= threshold:
-            return True
-    return False
 
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
-    sent_titles = load_set_from_file(SENT_TITLES_FILE)
+    sent_titles = load_list_from_file(SENT_TITLES_FILE)
     new_links = set()
-    new_titles = set()
+    new_titles = []
 
-    # کلماتی که نشان‌دهنده خطا هستند
     error_keywords = ["error", "500", "server", "not found", "404", "خطا", "مشکل"]
 
     for source_name, feed_url in RSS_FEEDS:
@@ -150,12 +139,10 @@ def fetch_and_send():
             print(f"Feed parse error for {source_name}: {e}")
             continue
 
-        # اگر فید خطای ساختاری داشته باشد (مثلاً HTML باشد)
         if feed.bozo:
             print(f"Feed {source_name} has bozo error, skipping.")
             continue
 
-        # اگر هیچ خبری در فید نبود
         if not feed.entries:
             print(f"Feed {source_name} returned no entries.")
             continue
@@ -166,53 +153,46 @@ def fetch_and_send():
             if not link:
                 continue
 
-            # بررسی عنوان برای تشخیص خطا
             if any(keyword in title.lower() for keyword in error_keywords):
                 print(f"Skipped (error-like title): {title}")
                 continue
 
-            # ترجمه عنوان
             translated_title = translate_text(title)
 
-            # فیلتر اخبار نامطلوب (همان کلمات قبلی)
             if is_unwanted(title, translated_title):
                 print(f"Skipped (unwanted): {title}")
                 continue
 
-            # تشخیص تکراری
             norm_title = normalize_title(translated_title if translated_title else title)
-            if norm_title in sent_titles:
+
+            if is_duplicate_title(norm_title, sent_titles):
                 print(f"Skipped (duplicate): {title}")
                 continue
 
-            # گرفتن خلاصه
             summary = entry.get("summary", entry.get("description", ""))
             summary = clean_html(summary)
             if len(summary) > 300:
                 summary = summary[:300] + "..."
             translated_summary = translate_text(summary) if summary else ""
 
-            # ساخت پیام
             message = f"📰 [{source_name}] {translated_title}\n"
             if translated_summary:
                 message += f"📝 {translated_summary}\n"
             short_link = shorten_url(link)
             message += f"🔗 {short_link}"
 
-            # ارسال
             if send_telegram_message(message):
                 print(f"Sent: {translated_title}")
                 new_links.add(link)
-                new_titles.add(norm_title)
+                new_titles.append(norm_title)
                 time.sleep(1)
             else:
                 print(f"Failed to send: {title}")
 
-    # ذخیره
     sent_links.update(new_links)
-    sent_titles.update(new_titles)
+    sent_titles.extend(new_titles)
     save_set_to_file(SENT_LINKS_FILE, sent_links)
-    save_set_to_file(SENT_TITLES_FILE, sent_titles)
+    save_list_to_file(SENT_TITLES_FILE, sent_titles)
     print("Finished.")
 
 if __name__ == "__main__":
