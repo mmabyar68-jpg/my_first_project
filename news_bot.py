@@ -14,12 +14,11 @@ CHANNEL_ID = os.environ.get("CHANNEL_ID")
 if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise ValueError("TELEGRAM_TOKEN and CHANNEL_ID must be set as environment variables")
 
-# لیست فیدها با نام منبع
+# لیست فیدها (نام منبع، آدرس)
 RSS_FEEDS = [
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
-    ("Google News", "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
     ("RT", "https://www.rt.com/rss/"),
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
@@ -29,7 +28,20 @@ RSS_FEEDS = [
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
 
-# لیست کلمات نامطلوب
+# کلمات مهم برای فیلتر اخبار
+IMPORTANT_KEYWORDS = [
+    "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "اقتصاد",
+    "تورم", "نفت", "قیمت", "دلار", "طلا", "بورس", "انتخابات", "رئیس‌جمهور",
+    "دولت", "مجلس", "قانون", "بحران", "کرونا", "ویروس", "واکسن", "صلح",
+    "مذاکره", "توافق", "جنگنده", "موشک", "هسته‌ای", "آمریکا", "ایران",
+    "چین", "روسیه", "اوکراین", "فلسطین", "اسرائیل", "عراق", "افغانستان",
+    "پاکستان", "هند", "ترکیه", "اروپا", "انگلیس", "فرانسه", "آلمان",
+    "پناهنده", "مهاجرت", "بهداشت", "آموزش", "فناوری", "هوش مصنوعی",
+    "اینترنت", "فضا", "محیط زیست", "آب و هوا", "تغییر اقلیم",
+    "جرم", "جنایت", "قتل", "دادگاه", "پلیس", "ارتش",
+]
+
+# کلمات نامطلوب (کم‌اهمیت)
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show"
@@ -101,12 +113,58 @@ def is_unwanted(title, translated_title=""):
     return False
 
 def is_duplicate_title(new_title, existing_titles, threshold=0.85):
-    """بررسی شباهت عنوان جدید با عنوان‌های قبلی"""
     for old_title in existing_titles:
         similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
         if similarity >= threshold:
             return True
     return False
+
+def is_important(title, translated_title, summary=""):
+    """فقط اخبار مهم را انتخاب می‌کند"""
+    combined_text = (title + " " + translated_title + " " + summary).lower()
+    for keyword in IMPORTANT_KEYWORDS:
+        if keyword in combined_text:
+            return True
+    return False
+
+def extract_image_url(entry):
+    """استخراج لینک عکس از entry فید"""
+    # روش‌های مختلف برای پیدا کردن عکس
+    if 'media_content' in entry:
+        for media in entry.media_content:
+            if 'url' in media:
+                return media['url']
+    if 'media_thumbnail' in entry:
+        for media in entry.media_thumbnail:
+            if 'url' in media:
+                return media['url']
+    if 'enclosures' in entry:
+        for enc in entry.enclosures:
+            if 'url' in enc and enc.get('type', '').startswith('image'):
+                return enc['url']
+    # جستجو در description یا summary برای تگ img
+    summary = entry.get('summary', entry.get('description', ''))
+    img_pattern = r'<img[^>]+src=["\'](.*?)["\']'
+    match = re.search(img_pattern, summary)
+    if match:
+        return match.group(1)
+    return None
+
+def send_telegram_photo(photo_url, caption):
+    """ارسال عکس با کپشن"""
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "photo": photo_url,
+        "caption": caption,
+    }
+    try:
+        response = requests.post(api_url, data=payload)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"Error sending photo: {e}")
+        return False
 
 def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -147,7 +205,12 @@ def fetch_and_send():
             print(f"Feed {source_name} returned no entries.")
             continue
 
-        for entry in feed.entries[:5]:
+        # از هر منبع فقط ۲ خبر اول مهم را بررسی می‌کنیم
+        count_sent_from_source = 0
+        for entry in feed.entries:
+            if count_sent_from_source >= 2:
+                break
+
             link = entry.get("link", "")
             title = entry.get("title", "بدون عنوان")
             if not link:
@@ -163,32 +226,58 @@ def fetch_and_send():
                 print(f"Skipped (unwanted): {title}")
                 continue
 
-            norm_title = normalize_title(translated_title if translated_title else title)
-
-            if is_duplicate_title(norm_title, sent_titles):
-                print(f"Skipped (duplicate): {title}")
-                continue
-
             summary = entry.get("summary", entry.get("description", ""))
             summary = clean_html(summary)
             if len(summary) > 300:
                 summary = summary[:300] + "..."
             translated_summary = translate_text(summary) if summary else ""
 
-            message = f"📰 [{source_name}] {translated_title}\n"
+            # فیلتر اهمیت خبر
+            if not is_important(title, translated_title, translated_summary):
+                print(f"Skipped (not important): {title}")
+                continue
+
+            norm_title = normalize_title(translated_title if translated_title else title)
+
+            if is_duplicate_title(norm_title, sent_titles):
+                print(f"Skipped (duplicate): {title}")
+                continue
+
+            # استخراج عکس
+            image_url = extract_image_url(entry)
+
+            # ساخت کپشن
+            caption = f"📰 [{source_name}] {translated_title}\n"
             if translated_summary:
-                message += f"📝 {translated_summary}\n"
+                caption += f"📝 {translated_summary}\n"
             short_link = shorten_url(link)
-            message += f"🔗 {short_link}"
+            caption += f"🔗 {short_link}"
 
-            if send_telegram_message(message):
-                print(f"Sent: {translated_title}")
-                new_links.add(link)
-                new_titles.append(norm_title)
-                time.sleep(1)
+            # ارسال با عکس یا بدون عکس
+            if image_url:
+                if send_telegram_photo(image_url, caption):
+                    print(f"Sent photo: {translated_title}")
+                    new_links.add(link)
+                    new_titles.append(norm_title)
+                    count_sent_from_source += 1
+                    time.sleep(2)
+                else:
+                    # اگر ارسال عکس ناموفق بود، پیام متنی بفرست
+                    if send_telegram_message(caption):
+                        print(f"Sent text (photo failed): {translated_title}")
+                        new_links.add(link)
+                        new_titles.append(norm_title)
+                        count_sent_from_source += 1
+                        time.sleep(1)
             else:
-                print(f"Failed to send: {title}")
+                if send_telegram_message(caption):
+                    print(f"Sent text: {translated_title}")
+                    new_links.add(link)
+                    new_titles.append(norm_title)
+                    count_sent_from_source += 1
+                    time.sleep(1)
 
+    # ذخیره‌سازی
     sent_links.update(new_links)
     sent_titles.extend(new_titles)
     save_set_to_file(SENT_LINKS_FILE, sent_links)
