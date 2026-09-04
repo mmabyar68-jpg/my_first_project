@@ -5,6 +5,7 @@ import time
 import re
 from deep_translator import GoogleTranslator
 import pyshorteners
+import difflib
 
 # ---------- تنظیمات ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
