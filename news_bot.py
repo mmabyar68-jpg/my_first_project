@@ -115,7 +115,23 @@ def send_telegram_message(text):
     except Exception as e:
         print(f"Error sending message: {e}")
         return False
-        
+        def load_list_from_file(filename):
+    if not os.path.exists(filename):
+        return []
+    with open(filename, "r", encoding="utf-8") as f:
+        return [line.strip() for line in f if line.strip()]
+
+def save_list_to_file(filename, data_list):
+    with open(filename, "w", encoding="utf-8") as f:
+        for item in data_list:
+            f.write(item + "\n")
+
+def is_duplicate_title(new_title, existing_titles, threshold=0.85):
+    for old_title in existing_titles:
+        similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
+        if similarity >= threshold:
+            return True
+    return False
 
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
