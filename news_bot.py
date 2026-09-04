@@ -2,6 +2,8 @@ import feedparser
 import requests
 import os
 import time
+from deep_translator import GoogleTranslator
+import pyshorteners
 
 # ---------- تنظیمات از متغیرهای محیطی ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -18,8 +20,13 @@ RSS_FEEDS = [
     "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
 ]
 
-# فایل ذخیره لینک‌های ارسال‌شده (در همان مخزن)
 SENT_LINKS_FILE = "sent_links.txt"
+
+# مترجم
+translator = GoogleTranslator(source='auto', target='fa')
+
+# کوتاه‌کننده لینک
+shortener = pyshorteners.Shortener()
 
 def load_sent_links():
     if not os.path.exists(SENT_LINKS_FILE):
@@ -32,15 +39,29 @@ def save_sent_links(links):
         for link in links:
             f.write(link + "\n")
 
+def translate_text(text):
+    try:
+        return translator.translate(text)
+    except Exception as e:
+        print(f"Translation error: {e}")
+        return text  # در صورت خطا، متن اصلی را برمی‌گردانیم
+
+def shorten_url(url):
+    try:
+        return shortener.tinyurl.short(url)
+    except Exception as e:
+        print(f"Shortening error: {e}")
+        return url  # اگر خطا داد، لینک اصلی
+
 def send_telegram_message(text):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
         "text": text,
         "disable_web_page_preview": False,
     }
     try:
-        response = requests.post(url, data=payload)
+        response = requests.post(api_url, data=payload)
         response.raise_for_status()
         return True
     except Exception as e:
@@ -58,10 +79,14 @@ def fetch_and_send():
             link = entry.get("link", "")
             title = entry.get("title", "بدون عنوان")
             if link and link not in sent_links:
-                message = f"📰 {title}\n🔗 {link}"
+                # ترجمه عنوان
+                translated_title = translate_text(title)
+                # کوتاه کردن لینک
+                short_link = shorten_url(link)
+                message = f"📰 {translated_title}\n🔗 {short_link}"
                 if send_telegram_message(message):
-                    print(f"Sent: {title}")
-                    new_links.add(link)
+                    print(f"Sent: {translated_title}")
+                    new_links.add(link)  # لینک اصلی را ذخیره می‌کنیم تا تکراری نشود
                 time.sleep(1)
             else:
                 if link in sent_links:
