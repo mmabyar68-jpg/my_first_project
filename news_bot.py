@@ -2,6 +2,7 @@ import feedparser
 import requests
 import os
 import time
+import re
 from deep_translator import GoogleTranslator
 import pyshorteners
 
@@ -12,36 +13,49 @@ CHANNEL_ID = os.environ.get("CHANNEL_ID")
 if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise ValueError("TELEGRAM_TOKEN and CHANNEL_ID must be set as environment variables")
 
-# لیست فیدهای خبری
+# لیست فیدها با نام منبع
 RSS_FEEDS = [
-    "http://rss.cnn.com/rss/edition.rss",
-    "http://feeds.bbci.co.uk/news/world/rss.xml",
-    "http://feeds.reuters.com/Reuters/worldNews",
-    "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en",
-    "https://www.aljazeera.com/xml/rss/all.xml",
-    "https://www.rt.com/rss/",
-    "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1",
-    "https://www.irna.ir/rss/",
+    ("CNN", "http://rss.cnn.com/rss/edition.rss"),
+    ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
+    ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
+    ("Google News", "https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en"),
+    ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
+    ("RT", "https://www.rt.com/rss/"),
+    ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
+    ("IRNA", "https://www.irna.ir/rss/"),
 ]
 
 SENT_LINKS_FILE = "sent_links.txt"
+SENT_TITLES_FILE = "sent_titles.txt"
+
+# لیست کلمات نامطلوب (انگلیسی و فارسی)
+EN_BLACKLIST = [
+    "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
+    "entertainment", "gossip", "rumor", "music", "tv", "reality show"
+]
+FA_BLACKLIST = [
+    "خواننده", "سلبریتی", "بازیگر", "سینما", "فیلم", "ورزش", "موسیقی",
+    "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
+]
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
-def load_sent_links():
-    if not os.path.exists(SENT_LINKS_FILE):
+def load_set_from_file(filename):
+    if not os.path.exists(filename):
         return set()
-    with open(SENT_LINKS_FILE, "r", encoding="utf-8") as f:
+    with open(filename, "r", encoding="utf-8") as f:
         return set(line.strip() for line in f if line.strip())
 
-def save_sent_links(links):
-    with open(SENT_LINKS_FILE, "w", encoding="utf-8") as f:
-        for link in links:
-            f.write(link + "\n")
+def save_set_to_file(filename, data_set):
+    with open(filename, "w", encoding="utf-8") as f:
+        for item in data_set:
+            f.write(item + "\n")
 
 def translate_text(text):
     try:
+        if not text:
+            return ""
         return translator.translate(text)
     except Exception as e:
         print(f"Translation error: {e}")
@@ -53,6 +67,31 @@ def shorten_url(url):
     except Exception as e:
         print(f"Shortening error: {e}")
         return url
+
+def clean_html(raw_html):
+    """حذف تگ‌های HTML از متن"""
+    cleanr = re.compile('<.*?>')
+    cleantext = re.sub(cleanr, '', raw_html)
+    return cleantext.strip()
+
+def normalize_title(title):
+    """نرمال‌سازی عنوان برای تشخیص تکراری‌ها"""
+    # حذف علائم نگارشی و فاصله‌های اضافی
+    title = re.sub(r'[^\w\s]', '', title, flags=re.UNICODE)
+    title = re.sub(r'\s+', ' ', title).strip().lower()
+    # برای دقت بیشتر، فقط ۶۰ کاراکتر اول
+    return title[:60]
+
+def is_unwanted(title, translated_title=""):
+    """بررسی وجود کلمات نامطلوب در عنوان اصلی و ترجمه‌شده"""
+    lower_title = title.lower()
+    for word in EN_BLACKLIST:
+        if word in lower_title:
+            return True
+    for word in FA_BLACKLIST:
+        if word in title or word in translated_title:
+            return True
+    return False
 
 def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -70,29 +109,68 @@ def send_telegram_message(text):
         return False
 
 def fetch_and_send():
-    sent_links = load_sent_links()
+    sent_links = load_set_from_file(SENT_LINKS_FILE)
+    sent_titles = load_set_from_file(SENT_TITLES_FILE)
     new_links = set()
+    new_titles = set()
 
-    for feed_url in RSS_FEEDS:
-        print(f"Checking feed: {feed_url}")
-        feed = feedparser.parse(feed_url)
-        for entry in feed.entries[:5]:  # ۵ خبر اول هر فید
+    for source_name, feed_url in RSS_FEEDS:
+        print(f"Checking feed: {source_name} - {feed_url}")
+        try:
+            feed = feedparser.parse(feed_url)
+        except Exception as e:
+            print(f"Feed parse error for {source_name}: {e}")
+            continue
+
+        for entry in feed.entries[:5]:  # از هر منبع ۵ خبر
             link = entry.get("link", "")
             title = entry.get("title", "بدون عنوان")
-            if link and link not in sent_links:
-                translated_title = translate_text(title)
-                short_link = shorten_url(link)
-                message = f"📰 {translated_title}\n🔗 {short_link}"
-                if send_telegram_message(message):
-                    print(f"Sent: {translated_title}")
-                    new_links.add(link)
+            if not link:
+                continue
+
+            # ترجمه عنوان
+            translated_title = translate_text(title)
+
+            # فیلتر اخبار نامطلوب
+            if is_unwanted(title, translated_title):
+                print(f"Skipped (unwanted): {title}")
+                continue
+
+            # تشخیص تکراری بر اساس عنوان نرمال‌شده
+            norm_title = normalize_title(translated_title if translated_title else title)
+            if norm_title in sent_titles:
+                print(f"Skipped (duplicate): {title}")
+                continue
+
+            # گرفتن خلاصه خبر
+            summary = entry.get("summary", entry.get("description", ""))
+            summary = clean_html(summary)
+            # کوتاه‌کردن خلاصه به ۳۰۰ کاراکتر
+            if len(summary) > 300:
+                summary = summary[:300] + "..."
+            translated_summary = translate_text(summary) if summary else ""
+
+            # ساخت پیام
+            message = f"📰 [{source_name}] {translated_title}\n"
+            if translated_summary:
+                message += f"📝 {translated_summary}\n"
+            short_link = shorten_url(link)
+            message += f"🔗 {short_link}"
+
+            # ارسال
+            if send_telegram_message(message):
+                print(f"Sent: {translated_title}")
+                new_links.add(link)
+                new_titles.add(norm_title)
                 time.sleep(1)
             else:
-                if link in sent_links:
-                    print(f"Skipped (already sent): {title}")
+                print(f"Failed to send: {title}")
 
+    # ذخیره لینک‌ها و عنوان‌های ارسال‌شده
     sent_links.update(new_links)
-    save_sent_links(sent_links)
+    sent_titles.update(new_titles)
+    save_set_to_file(SENT_LINKS_FILE, sent_links)
+    save_set_to_file(SENT_TITLES_FILE, sent_titles)
     print("Finished.")
 
 if __name__ == "__main__":
