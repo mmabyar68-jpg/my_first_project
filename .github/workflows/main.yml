@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: news-bot-run
-  cancel-in-progress: true   # جلوگیری از اجرای هم‌زمان
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -19,15 +19,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run script
+        env:
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHANNEL_ID: ${{ secrets.CHANNEL_ID }}
+        run: python news_bot.py
+
       - name: Commit sent links and titles
-  if: success()
-  run: |
-    git config --global user.name "github-actions[bot]"
-    git config --global user.email "github-actions[bot]@users.noreply.github.com"
-    git add sent_links.txt sent_titles.txt
-    if git diff --cached --quiet; then
-      echo "No changes to commit"
-    else
-      git commit -m "Update sent links and titles"
-      git push --force
-    fi
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add sent_links.txt sent_titles.txt
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update sent links and titles"
+            git push --force
+          fi
