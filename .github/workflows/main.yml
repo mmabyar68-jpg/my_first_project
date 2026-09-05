@@ -7,7 +7,7 @@ on:
 
 concurrency:
   group: news-bot-run
-  cancel-in-progress: false
+  cancel-in-progress: true   # جلوگیری از اجرای هم‌زمان
 
 jobs:
   build:
