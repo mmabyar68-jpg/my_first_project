@@ -87,7 +87,9 @@ SOURCE_HASHTAGS = {
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
 SLOGAN = "🔔 برای از دست ندادن اخبار مهم ایران و جهان، ما را دنبال کنید."
 
-# ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند"
+# ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند
+# [4, 6, 8, 10, 14, 16, 17, 18, 20] UTC معادل:
+# 7:30, 9:30, 11:30, 13:30, 17:30, 19:30, 20:30, 21:30, 23:30 به وقت تهران
 PEAK_HOURS_UTC = [4, 6, 8, 10, 14, 16, 17, 18, 20]
 
 translator = GoogleTranslator(source='auto', target='fa')
@@ -269,14 +271,14 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = f"""
 You are a news assistant. I give you a news title and its content. Do two things:
 1. Translate the title to Persian (if it's not already Persian).
-2. Write a very short summary in Persian (max 20 words, headline style, no extra details).
+2. Write a concise but complete summary in Persian (1 to 2 sentences) that captures the main point of the news. The summary should be like a short headline or lead, not a full paragraph, and must not be cut off or end abruptly.
 
 Title: {title}
 Content: {content[:1000]}
 
 Return exactly in this format:
 TITLE: <translated title>
-SUMMARY: <short summary>
+SUMMARY: <summary>
 """
     try:
         if service_name == "openai":
@@ -286,7 +288,7 @@ SUMMARY: <short summary>
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=15)
             if resp.status_code != 200:
                 raise Exception(f"OpenAI API error: {resp.status_code}")
             text = resp.json()["choices"][0]["message"]["content"]
@@ -298,7 +300,7 @@ SUMMARY: <short summary>
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload)
+            resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=15)
             if resp.status_code != 200:
                 raise Exception(f"DeepSeek API error: {resp.status_code}")
             text = resp.json()["choices"][0]["message"]["content"]
@@ -315,7 +317,7 @@ SUMMARY: <short summary>
                 "temperature": 0.3,
                 "preamble": "You are a helpful news assistant that translates and summarizes news.",
             }
-            resp = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload)
+            resp = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=15)
             if resp.status_code != 200:
                 raise Exception(f"Cohere API error: {resp.status_code}")
             text = resp.json()["text"]
