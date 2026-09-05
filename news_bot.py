@@ -214,18 +214,53 @@ CATEGORY_EMOJIS = {
 }
 
 def extract_image_url(entry):
+    # 1) media_content
     if 'media_content' in entry:
         for media in entry.media_content:
-            if 'url' in media:
-                return media['url']
+            url = media.get('url', '')
+            if url:
+                # گاهی type خالی است ولی medium=image
+                if media.get('medium') == 'image' or media.get('type', '').startswith('image'):
+                    return url
+                # اگر medium یا type مشخص نبود، هر URL را برگردان
+                return url
+
+    # 2) media_thumbnail
     if 'media_thumbnail' in entry:
         for media in entry.media_thumbnail:
             if 'url' in media:
                 return media['url']
+
+    # 3) enclosures
     if 'enclosures' in entry:
         for enc in entry.enclosures:
-            if 'url' in enc and enc.get('type', '').startswith('image'):
-                return enc['url']
+            if enc.get('type', '').startswith('image'):
+                return enc.get('url', '')
+
+    # 4) summary/description: جستجوی پیشرفته تگ img
+    summary = entry.get('summary', entry.get('description', ''))
+    # الگوهای src, data-src, data-lazy-src, data-original
+    img_patterns = [
+        r'<img[^>]+src=["\'](.*?)["\']',
+        r'<img[^>]+data-src=["\'](.*?)["\']',
+        r'<img[^>]+data-lazy-src=["\'](.*?)["\']',
+        r'<img[^>]+data-original=["\'](.*?)["\']',
+        r'<img[^>]+srcset=["\'](.*?)["\']',  # srcset معمولاً چند URL با عرض‌ها دارد؛ اولین URL را می‌گیریم
+    ]
+    for pattern in img_patterns:
+        match = re.search(pattern, summary)
+        if match:
+            url = match.group(1)
+            # اگر srcset بود، اولین URL را استخراج کن
+            if 'srcset' in pattern and url:
+                # فرمت: "url1 1x, url2 2x"
+                parts = url.split(',')
+                if parts:
+                    url = parts[0].strip().split(' ')[0]
+            if url:
+                return url
+    return None
+
     summary = entry.get('summary', entry.get('description', ''))
     img_pattern = r'<img[^>]+src=["\'](.*?)["\']'
     match = re.search(img_pattern, summary)
