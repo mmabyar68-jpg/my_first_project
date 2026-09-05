@@ -4,8 +4,6 @@ import os
 import time
 import re
 import difflib
-import json
-import datetime
 from deep_translator import GoogleTranslator
 import pyshorteners
 
@@ -58,7 +56,6 @@ RSS_FEEDS = [
 
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
-PENDING_QUEUE_FILE = "pending_news.json"
 
 # کلمات فوری
 URGENT_KEYWORDS = [
@@ -81,7 +78,9 @@ IMPORTANT_KEYWORDS = [
     "جرم", "جنایت", "قتل", "دادگاه", "پلیس", "ارتش",
     "سکه", "اوراق", "عرضه اولیه", "بانک مرکزی", "ارز", "ریال", "سهام",
     "بازار سرمایه", "بازار مالی", "سپرده", "وام", "اعتبار", "مالیات",
-    "یارانه", "بودجه"
+    "یارانه", "بودجه",
+    "تعطیلی مدارس", "کالابرگ", "یارانه", "سهام عدالت", "کمک معیشتی",
+    "بسته معیشتی", "تعطیلی ادارات"
 ]
 
 EN_BLACKLIST = [
@@ -93,6 +92,7 @@ FA_BLACKLIST = [
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
+# هشتگ‌های فارسی
 SOURCE_HASHTAGS = {
     "CNN": "#سی_ان_ان",
     "BBC": "#بی_بی_سی",
@@ -115,9 +115,6 @@ SOURCE_HASHTAGS = {
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
 SLOGAN = "🔔 برای از دست ندادن اخبار مهم ایران و جهان، ما را دنبال کنید."
-
-# ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند
-PEAK_HOURS_UTC = [4, 6, 8, 10, 14, 16, 17, 18, 20]
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
@@ -144,16 +141,6 @@ def save_list_to_file(filename, data_list):
     with open(filename, "w", encoding="utf-8") as f:
         for item in data_list:
             f.write(item + "\n")
-
-def load_pending_queue():
-    if not os.path.exists(PENDING_QUEUE_FILE):
-        return []
-    with open(PENDING_QUEUE_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_pending_queue(queue):
-    with open(PENDING_QUEUE_FILE, "w", encoding="utf-8") as f:
-        json.dump(queue, f, ensure_ascii=False, indent=2)
 
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
@@ -247,15 +234,12 @@ def extract_image_url(entry):
     return None
 
 def extract_video_url(entry):
-    """استخراج لینک ویدیو از entry"""
-    # در media_content
     if 'media_content' in entry:
         for media in entry.media_content:
             if 'url' in media and media.get('type', '').startswith('video'):
                 return media['url']
             if 'url' in media and 'video' in media.get('medium', ''):
                 return media['url']
-    # در enclosures
     if 'enclosures' in entry:
         for enc in entry.enclosures:
             if 'url' in enc and enc.get('type', '').startswith('video'):
@@ -265,7 +249,7 @@ def extract_video_url(entry):
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-def send_telegram_message(text, reply_markup=None):
+def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -273,8 +257,6 @@ def send_telegram_message(text, reply_markup=None):
         "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
     try:
         response = requests.post(api_url, json=payload)
         response.raise_for_status()
@@ -283,7 +265,7 @@ def send_telegram_message(text, reply_markup=None):
         print(f"Error sending message: {e}")
         return False
 
-def send_telegram_photo(photo_url, caption, reply_markup=None):
+def send_telegram_photo(photo_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -291,8 +273,6 @@ def send_telegram_photo(photo_url, caption, reply_markup=None):
         "caption": caption,
         "parse_mode": "HTML",
     }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
     try:
         response = requests.post(api_url, json=payload)
         response.raise_for_status()
@@ -301,7 +281,7 @@ def send_telegram_photo(photo_url, caption, reply_markup=None):
         print(f"Error sending photo: {e}")
         return False
 
-def send_telegram_video(video_url, caption, reply_markup=None):
+def send_telegram_video(video_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -309,8 +289,6 @@ def send_telegram_video(video_url, caption, reply_markup=None):
         "caption": caption,
         "parse_mode": "HTML",
     }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
     try:
         response = requests.post(api_url, json=payload)
         response.raise_for_status()
@@ -319,23 +297,15 @@ def send_telegram_video(video_url, caption, reply_markup=None):
         print(f"Error sending video: {e}")
         return False
 
-def build_inline_keyboard(original_link):
-    return {
-        "inline_keyboard": [
-            [{"text": "📎 مشاهده خبر اصلی", "url": original_link}],
-            [{"text": "🔔 عضویت در کانال", "url": CHANNEL_LINK}]
-        ]
-    }
-
 # ---------- توابع AI ----------
 def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = f"""
 You are a news assistant. I give you a news title and its content. Do two things:
 1. Translate the title to Persian (if it's not already Persian).
-2. Write a concise but complete summary in Persian (1 to 2 sentences) that captures the main point of the news. The summary should be like a short headline or lead, not a full paragraph, and must not be cut off or end abruptly.
+2. Write a concise but **complete** summary in Persian (2 to 3 sentences) that captures the main point AND includes all important numbers, names, percentages, prices, scores, lineup details, dates, or other specific facts mentioned in the content. Do not omit numerical details. The summary should be like a short news lead that gives the reader the essential information without extra background. It must not end abruptly or leave out the "how much", "who", "what", "when".
 
 Title: {title}
-Content: {content[:1000]}
+Content: {content[:2000]}
 
 Return exactly in this format:
 TITLE: <translated title>
@@ -404,8 +374,8 @@ def fallback_translate_and_summarize(title, content):
     try:
         translated_title = translator.translate(title) if title else ""
         summary_clean = clean_html(content)
-        if len(summary_clean) > 300:
-            summary_clean = summary_clean[:300] + "..."
+        if len(summary_clean) > 600:
+            summary_clean = summary_clean[:600] + "..."
         translated_summary = translator.translate(summary_clean) if summary_clean else ""
         return translated_title, translated_summary
     except Exception as e:
@@ -442,33 +412,26 @@ def send_news_item(item):
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
 
-    reply_markup = build_inline_keyboard(link)
-
-    # اولویت با ویدیو، سپس عکس، سپس متن
+    # اولویت: ویدیو، عکس، متن
     if video_url:
-        success = send_telegram_video(video_url, caption, reply_markup)
+        success = send_telegram_video(video_url, caption)
         if not success:
-            # اگر ویدیو ناموفق بود، به عکس یا متن برمی‌گردیم
             if image_url:
-                success = send_telegram_photo(image_url, caption, reply_markup)
+                success = send_telegram_photo(image_url, caption)
             else:
-                success = send_telegram_message(caption, reply_markup)
+                success = send_telegram_message(caption)
     elif image_url:
-        success = send_telegram_photo(image_url, caption, reply_markup)
+        success = send_telegram_photo(image_url, caption)
         if not success:
-            success = send_telegram_message(caption, reply_markup)
+            success = send_telegram_message(caption)
     else:
-        success = send_telegram_message(caption, reply_markup)
+        success = send_telegram_message(caption)
 
     return success
 
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
     sent_titles = load_list_from_file(SENT_TITLES_FILE)
-    pending_queue = load_pending_queue()
-
-    current_hour = datetime.datetime.utcnow().hour
-    is_peak_hour = current_hour in PEAK_HOURS_UTC
 
     error_keywords = ["error", "500", "server", "not found", "404", "خطا", "مشکل"]
 
@@ -490,7 +453,7 @@ def fetch_and_send():
 
         count_from_source = 0
         for entry in feed.entries:
-            if count_from_source >= 5:
+            if count_from_source >= 5:  # حداکثر ۵ خبر از هر منبع
                 break
 
             link = entry.get("link", "")
@@ -511,8 +474,6 @@ def fetch_and_send():
                 print(f"Skipped (unwanted): {title}")
                 continue
 
-            importance_score = calculate_importance(title, translated_title, translated_summary)
-
             norm_title = normalize_title(translated_title if translated_title else title)
 
             if is_duplicate_title(norm_title, sent_titles):
@@ -527,39 +488,21 @@ def fetch_and_send():
                 "category": classify_news(title, translated_summary),
                 "image_url": extract_image_url(entry),
                 "video_url": extract_video_url(entry),
-                "timestamp": time.time()
             }
 
-            if importance_score >= 8 or is_peak_hour:
-                success = send_news_item(news_item)
-                if success:
-                    print(f"Sent: {translated_title}")
-                    sent_links.add(link)
-                    sent_titles.append(norm_title)
-                    count_from_source += 1
-                    time.sleep(1)
-            else:
-                pending_queue.append(news_item)
-                print(f"Queued for peak hour: {translated_title}")
-                count_from_source += 1
-                time.sleep(0.5)
-
-    if is_peak_hour and pending_queue:
-        print("Sending pending queue...")
-        new_pending = []
-        for item in pending_queue:
-            success = send_news_item(item)
+            success = send_news_item(news_item)
             if success:
-                sent_links.add(item["link"])
-                sent_titles.append(normalize_title(item["title"]))
+                print(f"Sent: {translated_title}")
+                sent_links.add(link)
+                sent_titles.append(norm_title)
+                count_from_source += 1
                 time.sleep(1)
             else:
-                new_pending.append(item)
-        pending_queue = new_pending
+                print(f"Failed to send: {title}")
 
+    # ذخیره‌سازی
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
-    save_pending_queue(pending_queue)
     print("Finished.")
 
 if __name__ == "__main__":
