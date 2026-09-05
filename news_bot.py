@@ -51,6 +51,21 @@ FA_BLACKLIST = [
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
+# نگاشت نام منبع به هشتگ فارسی
+SOURCE_HASHTAGS = {
+    "CNN": "#سی_ان_ان",
+    "BBC": "#بی_بی_سی",
+    "Reuters": "#رویترز",
+    "Google News": "#گوگل_نیوز",
+    "Al Jazeera": "#الجزیره",
+    "RT": "#راشا_تودی",
+    "Tasnim": "#تسنیم",
+    "IRNA": "#ایرنا",
+}
+
+# لینک کانال (جایگزین لینک خبر)
+CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
+
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
@@ -147,7 +162,6 @@ def extract_image_url(entry):
     return None
 
 def escape_html(text):
-    """فرار دادن کاراکترهای خاص HTML"""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 def send_telegram_message(text):
@@ -244,17 +258,20 @@ def fetch_and_send():
 
             image_url = extract_image_url(entry)
 
-            # آماده‌سازی متن با HTML و فرار از کاراکترها
+            # هشتگ منبع
+            source_hashtag = SOURCE_HASHTAGS.get(source_name, f"#{source_name.replace(' ', '_')}")
+
+            # ساخت کپشن
             title_escaped = escape_html(translated_title)
             summary_escaped = escape_html(translated_summary) if translated_summary else ""
 
-            caption = f"<b>📰 [{source_name}] {title_escaped}</b>\n\n"
+            caption = f"<b>📰 {title_escaped}</b>\n\n"
             if summary_escaped:
                 caption += f"📝 {summary_escaped}\n\n"
-            short_link = shorten_url(link)
-            caption += f"🔗 {short_link}"
+            caption += f"{source_hashtag}\n"
+            caption += f"🔗 {CHANNEL_LINK}"
 
-            # ارسال با عکس یا بدون عکس
+            # ارسال
             if image_url:
                 if send_telegram_photo(image_url, caption):
                     print(f"Sent photo: {translated_title}")
@@ -277,7 +294,6 @@ def fetch_and_send():
                     count_sent_from_source += 1
                     time.sleep(1)
 
-    # ذخیره‌سازی
     sent_links.update(new_links)
     sent_titles.extend(new_titles)
     save_set_to_file(SENT_LINKS_FILE, sent_links)
