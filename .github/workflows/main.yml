@@ -43,6 +43,5 @@ jobs:
             echo "No changes to commit"
           else
             git commit -m "Update sent links and titles"
-            git pull --rebase --autostash
-            git push
+            git push --force-with-lease
           fi
