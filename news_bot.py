@@ -34,13 +34,26 @@ if not ai_services:
 
 # ---------- فیدها ----------
 RSS_FEEDS = [
+    # منابع خارجی
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
     ("RT", "https://www.rt.com/rss/"),
+    ("Associated Press", "https://apnews.com/rss"),
+    ("The Guardian", "https://www.theguardian.com/world/rss"),
+    ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
+    ("France 24", "https://www.france24.com/en/rss"),
+    ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
+
+    # منابع ایرانی
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
+    ("Fars", "https://www.farsnews.ir/rss"),
+    ("Mehr", "https://www.mehrnews.com/rss"),
+    ("ISNA", "https://www.isna.ir/rss"),
+    ("Tabnak", "https://www.tabnak.ir/fa/rss/allnews"),
+    ("Eghtesadonline", "https://www.eghtesadonline.com/fa/rss/allnews"),
 ]
 
 SENT_LINKS_FILE = "sent_links.txt"
@@ -88,6 +101,16 @@ SOURCE_HASHTAGS = {
     "RT": "#راشا_تودی",
     "Tasnim": "#تسنیم",
     "IRNA": "#ایرنا",
+    "Associated Press": "#آسوشیتدپرس",
+    "The Guardian": "#گاردین",
+    "Deutsche Welle": "#دویچه_وله",
+    "France 24": "#فرانس_۲۴",
+    "New York Times": "#نیویورک_تایمز",
+    "Fars": "#فارس",
+    "Mehr": "#مهر",
+    "ISNA": "#ایسنا",
+    "Tabnak": "#تابناک",
+    "Eghtesadonline": "#اقتصادآنلاین",
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
