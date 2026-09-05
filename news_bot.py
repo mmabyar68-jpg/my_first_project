@@ -4,6 +4,8 @@ import os
 import time
 import re
 import difflib
+import json
+import datetime
 from deep_translator import GoogleTranslator
 import pyshorteners
 
@@ -11,10 +13,26 @@ import pyshorteners
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
 
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
+
 if not TELEGRAM_TOKEN or not CHANNEL_ID:
     raise ValueError("TELEGRAM_TOKEN and CHANNEL_ID must be set as environment variables")
 
-# لیست فیدها (نام منبع، آدرس)
+# ---------- سرویس‌های AI با اولویت ----------
+ai_services = []
+if OPENAI_API_KEY:
+    ai_services.append(("openai", OPENAI_API_KEY))
+if DEEPSEEK_API_KEY:
+    ai_services.append(("deepseek", DEEPSEEK_API_KEY))
+if COHERE_API_KEY:
+    ai_services.append(("cohere", COHERE_API_KEY))
+
+if not ai_services:
+    print("No AI API keys found, falling back to deep-translator.")
+
+# ---------- فیدها ----------
 RSS_FEEDS = [
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
@@ -27,8 +45,14 @@ RSS_FEEDS = [
 
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
+PENDING_QUEUE_FILE = "pending_news.json"
 
-# کلمات مهم برای فیلتر اخبار
+# کلمات فوری
+URGENT_KEYWORDS = [
+    "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
+    "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری"
+]
+
 IMPORTANT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "اقتصاد",
     "تورم", "نفت", "قیمت", "دلار", "طلا", "بورس", "انتخابات", "رئیس‌جمهور",
@@ -41,7 +65,6 @@ IMPORTANT_KEYWORDS = [
     "جرم", "جنایت", "قتل", "دادگاه", "پلیس", "ارتش",
 ]
 
-# کلمات نامطلوب (کم‌اهمیت)
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show"
@@ -51,9 +74,26 @@ FA_BLACKLIST = [
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
+SOURCE_HASHTAGS = {
+    "CNN": "#سی_ان_ان",
+    "BBC": "#بی_بی_سی",
+    "Reuters": "#رویترز",
+    "Al Jazeera": "#الجزیره",
+    "RT": "#راشا_تودی",
+    "Tasnim": "#تسنیم",
+    "IRNA": "#ایرنا",
+}
+
+CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
+SLOGAN = "🔔 برای از دست ندادن اخبار مهم ایران و جهان، ما را دنبال کنید."
+
+# ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند
+PEAK_HOURS_UTC = [4, 8, 14, 17]
+
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
+# ---------- توابع کمکی ----------
 def load_set_from_file(filename):
     if not os.path.exists(filename):
         return set()
@@ -76,21 +116,15 @@ def save_list_to_file(filename, data_list):
         for item in data_list:
             f.write(item + "\n")
 
-def translate_text(text):
-    try:
-        if not text:
-            return ""
-        return translator.translate(text)
-    except Exception as e:
-        print(f"Translation error: {e}")
-        return text
+def load_pending_queue():
+    if not os.path.exists(PENDING_QUEUE_FILE):
+        return []
+    with open(PENDING_QUEUE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
 
-def shorten_url(url):
-    try:
-        return shortener.tinyurl.short(url)
-    except Exception as e:
-        print(f"Shortening error: {e}")
-        return url
+def save_pending_queue(queue):
+    with open(PENDING_QUEUE_FILE, "w", encoding="utf-8") as f:
+        json.dump(queue, f, ensure_ascii=False, indent=2)
 
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
@@ -102,13 +136,14 @@ def normalize_title(title):
     title = re.sub(r'\s+', ' ', title).strip().lower()
     return title[:60]
 
-def is_unwanted(title, translated_title=""):
+def is_unwanted(title, translated_title="", translated_summary=""):
     lower_title = title.lower()
+    lower_summary = translated_summary.lower()
     for word in EN_BLACKLIST:
         if word in lower_title:
             return True
     for word in FA_BLACKLIST:
-        if word in title or word in translated_title:
+        if word in title or word in translated_title or word in translated_summary:
             return True
     return False
 
@@ -119,12 +154,48 @@ def is_duplicate_title(new_title, existing_titles, threshold=0.85):
             return True
     return False
 
-def is_important(title, translated_title, summary=""):
-    combined_text = (title + " " + translated_title + " " + summary).lower()
+def calculate_importance(title, translated_title, summary=""):
+    score = 0
+    title_text = (title + " " + translated_title).lower()
+    summary_text = summary.lower()
     for keyword in IMPORTANT_KEYWORDS:
-        if keyword in combined_text:
-            return True
-    return False
+        if keyword in title_text:
+            score += 3
+        elif keyword in summary_text:
+            score += 1
+    for keyword in URGENT_KEYWORDS:
+        if keyword in title_text:
+            score += 5
+    return score
+
+def classify_news(title, summary=""):
+    text = (title + " " + summary).lower()
+    categories = {
+        "conflict": ["جنگ", "حمله", "درگیری", "موشک", "انفجار", "ارتش", "نظامی", "تهاجم"],
+        "economy": ["اقتصاد", "تورم", "نفت", "دلار", "بورس", "قیمت", "تجارت", "سهام", "بودجه"],
+        "politics": ["انتخابات", "رئیس‌جمهور", "دولت", "مجلس", "سیاست", "قانون", "تحریم", "مذاکره"],
+        "sports": ["ورزش", "فوتبال", "بسکتبال", "المپیک", "لیگ", "جام"],
+        "technology": ["فناوری", "هوش مصنوعی", "اینترنت", "ربات", "نرم‌افزار", "استارتاپ", "دیجیتال"],
+        "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو"],
+        "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل"],
+        "other": []
+    }
+    for cat, keywords in categories.items():
+        for kw in keywords:
+            if kw in text:
+                return cat
+    return "other"
+
+CATEGORY_EMOJIS = {
+    "politics": "🏛️",
+    "economy": "💰",
+    "sports": "🏆",
+    "technology": "💻",
+    "health": "🏥",
+    "environment": "🌍",
+    "conflict": "⚔️",
+    "other": "📰",
+}
 
 def extract_image_url(entry):
     if 'media_content' in entry:
@@ -147,10 +218,9 @@ def extract_image_url(entry):
     return None
 
 def escape_html(text):
-    """فرار دادن کاراکترهای خاص HTML"""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-def send_telegram_message(text):
+def send_telegram_message(text, reply_markup=None):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -158,15 +228,17 @@ def send_telegram_message(text):
         "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
-        response = requests.post(api_url, data=payload)
+        response = requests.post(api_url, json=payload)
         response.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending message: {e}")
         return False
 
-def send_telegram_photo(photo_url, caption):
+def send_telegram_photo(photo_url, caption, reply_markup=None):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -174,19 +246,153 @@ def send_telegram_photo(photo_url, caption):
         "caption": caption,
         "parse_mode": "HTML",
     }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
     try:
-        response = requests.post(api_url, data=payload)
+        response = requests.post(api_url, json=payload)
         response.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending photo: {e}")
         return False
 
+def build_inline_keyboard(original_link):
+    return {
+        "inline_keyboard": [
+            [{"text": "📎 مشاهده خبر اصلی", "url": original_link}],
+            [{"text": "🔔 عضویت در کانال", "url": CHANNEL_LINK}]
+        ]
+    }
+
+# ---------- توابع AI ----------
+def ai_translate_and_summarize(title, content, service_name, api_key):
+    prompt = f"""
+You are a news assistant. I give you a news title and its content. Do two things:
+1. Translate the title to Persian (if it's not already Persian).
+2. Write a very short summary in Persian (max 20 words, headline style, no extra details).
+
+Title: {title}
+Content: {content[:1000]}
+
+Return exactly in this format:
+TITLE: <translated title>
+SUMMARY: <short summary>
+"""
+    try:
+        if service_name == "openai":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-3.5-turbo",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+            }
+            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise Exception(f"OpenAI API error: {resp.status_code}")
+            text = resp.json()["choices"][0]["message"]["content"]
+
+        elif service_name == "deepseek":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+            }
+            resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise Exception(f"DeepSeek API error: {resp.status_code}")
+            text = resp.json()["choices"][0]["message"]["content"]
+
+        elif service_name == "cohere":
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            payload = {
+                "model": "command-r",
+                "message": prompt,
+                "temperature": 0.3,
+                "preamble": "You are a helpful news assistant that translates and summarizes news.",
+            }
+            resp = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload)
+            if resp.status_code != 200:
+                raise Exception(f"Cohere API error: {resp.status_code}")
+            text = resp.json()["text"]
+        else:
+            return None
+
+        translated_title = ""
+        summary = ""
+        for line in text.split('\n'):
+            line = line.strip()
+            if line.startswith("TITLE:"):
+                translated_title = line.replace("TITLE:", "").strip()
+            elif line.startswith("SUMMARY:"):
+                summary = line.replace("SUMMARY:", "").strip()
+        if not translated_title:
+            translated_title = title
+        return translated_title, summary
+    except Exception as e:
+        print(f"{service_name} error: {e}")
+        return None
+
+def fallback_translate_and_summarize(title, content):
+    try:
+        translated_title = translator.translate(title) if title else ""
+        summary_clean = clean_html(content)
+        if len(summary_clean) > 300:
+            summary_clean = summary_clean[:300] + "..."
+        translated_summary = translator.translate(summary_clean) if summary_clean else ""
+        return translated_title, translated_summary
+    except Exception as e:
+        print(f"Fallback error: {e}")
+        return title, content[:200]
+
+def process_with_ai(title, content):
+    for service_name, key in ai_services:
+        result = ai_translate_and_summarize(title, content, service_name, key)
+        if result:
+            return result
+    return fallback_translate_and_summarize(title, content)
+
+# ---------- ارسال خبر ----------
+def send_news_item(item):
+    title = item.get("title", "")
+    summary = item.get("summary", "")
+    link = item.get("link", "")
+    source = item.get("source", "")
+    category = item.get("category", "other")
+    image_url = item.get("image_url", None)
+
+    category_emoji = CATEGORY_EMOJIS.get(category, "📰")
+    source_hashtag = SOURCE_HASHTAGS.get(source, f"#{source.replace(' ', '_')}")
+
+    title_escaped = escape_html(title)
+    summary_escaped = escape_html(summary) if summary else ""
+
+    caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
+    if summary_escaped:
+        caption += f"📝 {summary_escaped}\n\n"
+    caption += f"{source_hashtag}\n"
+    caption += f"🔗 {CHANNEL_LINK}\n\n"
+    caption += SLOGAN
+
+    reply_markup = build_inline_keyboard(link)
+
+    if image_url:
+        success = send_telegram_photo(image_url, caption, reply_markup)
+    else:
+        success = send_telegram_message(caption, reply_markup)
+    return success
+
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
     sent_titles = load_list_from_file(SENT_TITLES_FILE)
-    new_links = set()
-    new_titles = []
+    pending_queue = load_pending_queue()
+
+    current_hour = datetime.datetime.utcnow().hour
+    is_peak_hour = current_hour in PEAK_HOURS_UTC
 
     error_keywords = ["error", "500", "server", "not found", "404", "خطا", "مشکل"]
 
@@ -206,9 +412,9 @@ def fetch_and_send():
             print(f"Feed {source_name} returned no entries.")
             continue
 
-        count_sent_from_source = 0
+        count_from_source = 0
         for entry in feed.entries:
-            if count_sent_from_source >= 2:
+            if count_from_source >= 5:
                 break
 
             link = entry.get("link", "")
@@ -220,21 +426,16 @@ def fetch_and_send():
                 print(f"Skipped (error-like title): {title}")
                 continue
 
-            translated_title = translate_text(title)
+            # ترجمه و خلاصه‌سازی با AI
+            translated_title, translated_summary = process_with_ai(title, entry.get("summary", entry.get("description", "")))
+            if not translated_title:
+                translated_title = title
 
-            if is_unwanted(title, translated_title):
+            if is_unwanted(title, translated_title, translated_summary):
                 print(f"Skipped (unwanted): {title}")
                 continue
 
-            summary = entry.get("summary", entry.get("description", ""))
-            summary = clean_html(summary)
-            if len(summary) > 300:
-                summary = summary[:300] + "..."
-            translated_summary = translate_text(summary) if summary else ""
-
-            if not is_important(title, translated_title, translated_summary):
-                print(f"Skipped (not important): {title}")
-                continue
+            importance_score = calculate_importance(title, translated_title, translated_summary)
 
             norm_title = normalize_title(translated_title if translated_title else title)
 
@@ -242,46 +443,46 @@ def fetch_and_send():
                 print(f"Skipped (duplicate): {title}")
                 continue
 
-            image_url = extract_image_url(entry)
+            news_item = {
+                "title": translated_title,
+                "summary": translated_summary,
+                "link": link,
+                "source": source_name,
+                "category": classify_news(title, translated_summary),
+                "image_url": extract_image_url(entry),
+                "timestamp": time.time()
+            }
 
-            # آماده‌سازی متن با HTML و فرار از کاراکترها
-            title_escaped = escape_html(translated_title)
-            summary_escaped = escape_html(translated_summary) if translated_summary else ""
-
-            caption = f"<b>📰 [{source_name}] {title_escaped}</b>\n\n"
-            if summary_escaped:
-                caption += f"📝 {summary_escaped}\n\n"
-            short_link = shorten_url(link)
-            caption += f"🔗 {short_link}"
-
-            # ارسال با عکس یا بدون عکس
-            if image_url:
-                if send_telegram_photo(image_url, caption):
-                    print(f"Sent photo: {translated_title}")
-                    new_links.add(link)
-                    new_titles.append(norm_title)
-                    count_sent_from_source += 1
-                    time.sleep(2)
-                else:
-                    if send_telegram_message(caption):
-                        print(f"Sent text (photo failed): {translated_title}")
-                        new_links.add(link)
-                        new_titles.append(norm_title)
-                        count_sent_from_source += 1
-                        time.sleep(1)
-            else:
-                if send_telegram_message(caption):
-                    print(f"Sent text: {translated_title}")
-                    new_links.add(link)
-                    new_titles.append(norm_title)
-                    count_sent_from_source += 1
+            if importance_score >= 8 or is_peak_hour:
+                success = send_news_item(news_item)
+                if success:
+                    print(f"Sent: {translated_title}")
+                    sent_links.add(link)
+                    sent_titles.append(norm_title)
+                    count_from_source += 1
                     time.sleep(1)
+            else:
+                pending_queue.append(news_item)
+                print(f"Queued for peak hour: {translated_title}")
+                count_from_source += 1
+                time.sleep(0.5)
 
-    # ذخیره‌سازی
-    sent_links.update(new_links)
-    sent_titles.extend(new_titles)
+    if is_peak_hour and pending_queue:
+        print("Sending pending queue...")
+        new_pending = []
+        for item in pending_queue:
+            success = send_news_item(item)
+            if success:
+                sent_links.add(item["link"])
+                sent_titles.append(normalize_title(item["title"]))
+                time.sleep(1)
+            else:
+                new_pending.append(item)
+        pending_queue = new_pending
+
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
+    save_pending_queue(pending_queue)
     print("Finished.")
 
 if __name__ == "__main__":
