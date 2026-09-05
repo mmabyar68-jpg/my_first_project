@@ -50,12 +50,12 @@ PENDING_QUEUE_FILE = "pending_news.json"
 # کلمات فوری
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
-    "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری"
+    "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری",
+    "سکه", "ارز", "بانک مرکزی"  # افزودن کلمات اقتصادی فوری
 ]
 
 IMPORTANT_KEYWORDS = [
-    "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "اقتصاد","سکه", "اوراق", "عرضه اولیه", "بانک مرکزی", "ارز", "ریال", "سهام", "بازار سرمایه",
-"بازار مالی", "سپرده", "وام", "اعتبار", "مالیات", "یارانه", "بودجه"
+    "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "اقتصاد",
     "تورم", "نفت", "قیمت", "دلار", "طلا", "بورس", "انتخابات", "رئیس‌جمهور",
     "دولت", "مجلس", "قانون", "بحران", "کرونا", "ویروس", "واکسن", "صلح",
     "مذاکره", "توافق", "جنگنده", "موشک", "هسته‌ای", "آمریکا", "ایران",
@@ -64,6 +64,9 @@ IMPORTANT_KEYWORDS = [
     "پناهنده", "مهاجرت", "بهداشت", "آموزش", "فناوری", "هوش مصنوعی",
     "اینترنت", "فضا", "محیط زیست", "آب و هوا", "تغییر اقلیم",
     "جرم", "جنایت", "قتل", "دادگاه", "پلیس", "ارتش",
+    "سکه", "اوراق", "عرضه اولیه", "بانک مرکزی", "ارز", "ریال", "سهام",
+    "بازار سرمایه", "بازار مالی", "سپرده", "وام", "اعتبار", "مالیات",
+    "یارانه", "بودجه"
 ]
 
 EN_BLACKLIST = [
@@ -89,8 +92,6 @@ CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
 SLOGAN = "🔔 برای از دست ندادن اخبار مهم ایران و جهان، ما را دنبال کنید."
 
 # ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند
-# [4, 6, 8, 10, 14, 16, 17, 18, 20] UTC معادل:
-# 7:30, 9:30, 11:30, 13:30, 17:30, 19:30, 20:30, 21:30, 23:30 به وقت تهران
 PEAK_HOURS_UTC = [4, 6, 8, 10, 14, 16, 17, 18, 20]
 
 translator = GoogleTranslator(source='auto', target='fa')
@@ -220,6 +221,22 @@ def extract_image_url(entry):
         return match.group(1)
     return None
 
+def extract_video_url(entry):
+    """استخراج لینک ویدیو از entry"""
+    # در media_content
+    if 'media_content' in entry:
+        for media in entry.media_content:
+            if 'url' in media and media.get('type', '').startswith('video'):
+                return media['url']
+            if 'url' in media and 'video' in media.get('medium', ''):
+                return media['url']
+    # در enclosures
+    if 'enclosures' in entry:
+        for enc in entry.enclosures:
+            if 'url' in enc and enc.get('type', '').startswith('video'):
+                return enc['url']
+    return None
+
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
@@ -257,6 +274,24 @@ def send_telegram_photo(photo_url, caption, reply_markup=None):
         return True
     except Exception as e:
         print(f"Error sending photo: {e}")
+        return False
+
+def send_telegram_video(video_url, caption, reply_markup=None):
+    api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
+    payload = {
+        "chat_id": CHANNEL_ID,
+        "video": video_url,
+        "caption": caption,
+        "parse_mode": "HTML",
+    }
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+    try:
+        response = requests.post(api_url, json=payload)
+        response.raise_for_status()
+        return True
+    except Exception as e:
+        print(f"Error sending video: {e}")
         return False
 
 def build_inline_keyboard(original_link):
@@ -367,6 +402,7 @@ def send_news_item(item):
     source = item.get("source", "")
     category = item.get("category", "other")
     image_url = item.get("image_url", None)
+    video_url = item.get("video_url", None)
 
     category_emoji = CATEGORY_EMOJIS.get(category, "📰")
     source_hashtag = SOURCE_HASHTAGS.get(source, f"#{source.replace(' ', '_')}")
@@ -383,10 +419,22 @@ def send_news_item(item):
 
     reply_markup = build_inline_keyboard(link)
 
-    if image_url:
+    # اولویت با ویدیو، سپس عکس، سپس متن
+    if video_url:
+        success = send_telegram_video(video_url, caption, reply_markup)
+        if not success:
+            # اگر ویدیو ناموفق بود، به عکس یا متن برمی‌گردیم
+            if image_url:
+                success = send_telegram_photo(image_url, caption, reply_markup)
+            else:
+                success = send_telegram_message(caption, reply_markup)
+    elif image_url:
         success = send_telegram_photo(image_url, caption, reply_markup)
+        if not success:
+            success = send_telegram_message(caption, reply_markup)
     else:
         success = send_telegram_message(caption, reply_markup)
+
     return success
 
 def fetch_and_send():
@@ -453,6 +501,7 @@ def fetch_and_send():
                 "source": source_name,
                 "category": classify_news(title, translated_summary),
                 "image_url": extract_image_url(entry),
+                "video_url": extract_video_url(entry),
                 "timestamp": time.time()
             }
 
