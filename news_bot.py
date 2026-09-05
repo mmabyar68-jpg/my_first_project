@@ -51,19 +51,6 @@ FA_BLACKLIST = [
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
-# نگاشت نام منبع به هشتگ فارسی
-SOURCE_HASHTAGS = {
-    "CNN": "#سی_ان_ان",
-    "BBC": "#بی_بی_سی",
-    "Reuters": "#رویترز",
-    "Al Jazeera": "#الجزیره",
-    "RT": "#راشا_تودی",
-    "Tasnim": "#تسنیم",
-    "IRNA": "#ایرنا",
-}
-
-CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
-
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
@@ -139,36 +126,6 @@ def is_important(title, translated_title, summary=""):
             return True
     return False
 
-def classify_news(title, summary=""):
-    """دسته‌بندی با کلمات کلیدی"""
-    text = (title + " " + summary).lower()
-    categories = {
-        "conflict": ["جنگ", "حمله", "درگیری", "موشک", "انفجار", "ارتش", "نظامی", "تهاجم"],
-        "economy": ["اقتصاد", "تورم", "نفت", "دلار", "بورس", "قیمت", "تجارت", "سهام", "بودجه"],
-        "politics": ["انتخابات", "رئیس‌جمهور", "دولت", "مجلس", "سیاست", "قانون", "تحریم", "مذاکره"],
-        "sports": ["ورزش", "فوتبال", "بسکتبال", "المپیک", "لیگ", "جام"],
-        "technology": ["فناوری", "هوش مصنوعی", "اینترنت", "ربات", "نرم‌افزار", "استارتاپ", "دیجیتال"],
-        "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو"],
-        "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل"],
-        "other": []
-    }
-    for cat, keywords in categories.items():
-        for kw in keywords:
-            if kw in text:
-                return cat
-    return "other"
-
-CATEGORY_EMOJIS = {
-    "politics": "🏛️",
-    "economy": "💰",
-    "sports": "🏆",
-    "technology": "💻",
-    "health": "🏥",
-    "environment": "🌍",
-    "conflict": "⚔️",
-    "other": "📰",
-}
-
 def extract_image_url(entry):
     if 'media_content' in entry:
         for media in entry.media_content:
@@ -190,9 +147,10 @@ def extract_image_url(entry):
     return None
 
 def escape_html(text):
+    """فرار دادن کاراکترهای خاص HTML"""
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
-def send_telegram_message(text, reply_markup=None):
+def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -200,17 +158,15 @@ def send_telegram_message(text, reply_markup=None):
         "parse_mode": "HTML",
         "disable_web_page_preview": False,
     }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
     try:
-        response = requests.post(api_url, json=payload)
+        response = requests.post(api_url, data=payload)
         response.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending message: {e}")
         return False
 
-def send_telegram_photo(photo_url, caption, reply_markup=None):
+def send_telegram_photo(photo_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     payload = {
         "chat_id": CHANNEL_ID,
@@ -218,27 +174,19 @@ def send_telegram_photo(photo_url, caption, reply_markup=None):
         "caption": caption,
         "parse_mode": "HTML",
     }
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
     try:
-        response = requests.post(api_url, json=payload)
+        response = requests.post(api_url, data=payload)
         response.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending photo: {e}")
         return False
 
-def build_inline_keyboard(original_link):
-    return {
-        "inline_keyboard": [
-            [{"text": "📎 مشاهده خبر اصلی", "url": original_link}],
-            [{"text": "🔔 عضویت در کانال", "url": CHANNEL_LINK}]
-        ]
-    }
-
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
     sent_titles = load_list_from_file(SENT_TITLES_FILE)
+    new_links = set()
+    new_titles = []
 
     error_keywords = ["error", "500", "server", "not found", "404", "خطا", "مشکل"]
 
@@ -260,7 +208,7 @@ def fetch_and_send():
 
         count_sent_from_source = 0
         for entry in feed.entries:
-            if count_sent_from_source >= 2:  # حداکثر ۲ خبر از هر منبع
+            if count_sent_from_source >= 2:
                 break
 
             link = entry.get("link", "")
@@ -296,41 +244,42 @@ def fetch_and_send():
 
             image_url = extract_image_url(entry)
 
-            # دسته‌بندی
-            category = classify_news(title, translated_summary)
-            category_emoji = CATEGORY_EMOJIS.get(category, "📰")
-
-            # هشتگ منبع
-            source_hashtag = SOURCE_HASHTAGS.get(source_name, f"#{source_name.replace(' ', '_')}")
-
-            # ساخت کپشن
+            # آماده‌سازی متن با HTML و فرار از کاراکترها
             title_escaped = escape_html(translated_title)
             summary_escaped = escape_html(translated_summary) if translated_summary else ""
 
-            caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
+            caption = f"<b>📰 [{source_name}] {title_escaped}</b>\n\n"
             if summary_escaped:
                 caption += f"📝 {summary_escaped}\n\n"
-            caption += f"{source_hashtag}\n"
-            caption += f"🔗 {CHANNEL_LINK}"
+            short_link = shorten_url(link)
+            caption += f"🔗 {short_link}"
 
-            reply_markup = build_inline_keyboard(link)
-
-            # ارسال با عکس یا متن
+            # ارسال با عکس یا بدون عکس
             if image_url:
-                success = send_telegram_photo(image_url, caption, reply_markup)
+                if send_telegram_photo(image_url, caption):
+                    print(f"Sent photo: {translated_title}")
+                    new_links.add(link)
+                    new_titles.append(norm_title)
+                    count_sent_from_source += 1
+                    time.sleep(2)
+                else:
+                    if send_telegram_message(caption):
+                        print(f"Sent text (photo failed): {translated_title}")
+                        new_links.add(link)
+                        new_titles.append(norm_title)
+                        count_sent_from_source += 1
+                        time.sleep(1)
             else:
-                success = send_telegram_message(caption, reply_markup)
-
-            if success:
-                print(f"Sent: {translated_title}")
-                sent_links.add(link)
-                sent_titles.append(norm_title)
-                count_sent_from_source += 1
-                time.sleep(1)
-            else:
-                print(f"Failed to send: {title}")
+                if send_telegram_message(caption):
+                    print(f"Sent text: {translated_title}")
+                    new_links.add(link)
+                    new_titles.append(norm_title)
+                    count_sent_from_source += 1
+                    time.sleep(1)
 
     # ذخیره‌سازی
+    sent_links.update(new_links)
+    sent_titles.extend(new_titles)
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
     print("Finished.")
