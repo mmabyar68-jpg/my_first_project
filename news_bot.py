@@ -87,8 +87,8 @@ SOURCE_HASHTAGS = {
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
 SLOGAN = "🔔 برای از دست ندادن اخبار مهم ایران و جهان، ما را دنبال کنید."
 
-# ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند
-PEAK_HOURS_UTC = [4, 8, 14, 17]
+# ساعات اوج (UTC) که خبرهای غیرفوری ارسال می‌شوند"
+PEAK_HOURS_UTC = [4, 6, 8, 10, 14, 16, 17, 18, 20]
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
