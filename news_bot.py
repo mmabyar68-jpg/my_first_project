@@ -6,7 +6,6 @@ import re
 import difflib
 from deep_translator import GoogleTranslator
 import pyshorteners
-from bs4 import BeautifulSoup
 
 # ---------- تنظیمات ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -58,7 +57,7 @@ RSS_FEEDS = [
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
 
-# کلمات فوری
+# ---------- کلمات فوری ----------
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
     "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری",
@@ -84,7 +83,7 @@ IMPORTANT_KEYWORDS = [
     "بسته معیشتی", "تعطیلی ادارات"
 ]
 
-# کلمات نامطلوب
+# کلمات نامطلوب (کم‌اهمیت)
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show"
@@ -94,7 +93,7 @@ FA_BLACKLIST = [
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
-# کلمات محلی/استانی
+# کلمات محلی/استانی که باید رد شوند
 LOCAL_BLACKLIST = [
     "استاندار", "فرماندار", "فرمانداری", "شهردار", "شورای شهر", "بخشدار",
     "استان", "شهرستان", "روستا", "پروژه‌های عمرانی", "عمرانی", "زیرگذر",
@@ -102,8 +101,10 @@ LOCAL_BLACKLIST = [
     "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
 ]
 
-IMPORTANCE_THRESHOLD = 4
+# ---------- تنظیمات اهمیت ----------
+IMPORTANCE_THRESHOLD = 4  # حداقل امتیاز برای ارسال
 
+# ---------- متغیرهای دیگر ----------
 SOURCE_HASHTAGS = {
     "CNN": "#سی_ان_ان",
     "BBC": "#بی_بی_سی",
@@ -175,6 +176,7 @@ def is_unwanted(title, translated_title="", translated_summary=""):
     return False
 
 def is_local_news(title, translated_title="", translated_summary=""):
+    """بررسی وجود کلمات محلی/استانی در عنوان یا خلاصه"""
     combined = (title + " " + translated_title + " " + translated_summary).lower()
     for word in LOCAL_BLACKLIST:
         if word in combined:
@@ -182,6 +184,7 @@ def is_local_news(title, translated_title="", translated_summary=""):
     return False
 
 def calculate_importance(title, translated_title, summary=""):
+    """محاسبه امتیاز اهمیت خبر"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
@@ -231,7 +234,6 @@ CATEGORY_EMOJIS = {
     "other": "📰",
 }
 
-# ---------- استخراج عکس و ویدیو ----------
 def extract_image_url(entry):
     if 'media_content' in entry:
         for media in entry.media_content:
@@ -269,210 +271,17 @@ def extract_image_url(entry):
     return None
 
 def extract_video_url(entry):
-    # 1. media_content
     if 'media_content' in entry:
         for media in entry.media_content:
-            url = media.get('url', '')
-            if url:
-                medium = media.get('medium', '')
-                type_attr = media.get('type', '')
-                if medium == 'video' or type_attr.startswith('video'):
-                    return url
-    # 2. enclosures
+            if 'url' in media and media.get('type', '').startswith('video'):
+                return media['url']
+            if 'url' in media and 'video' in media.get('medium', ''):
+                return media['url']
     if 'enclosures' in entry:
         for enc in entry.enclosures:
-            if enc.get('type', '').startswith('video') or 'video' in enc.get('medium', ''):
-                return enc.get('url', '')
-    # 3. Summary / description: search for video tag
-    summary = entry.get('summary', entry.get('description', ''))
-    # جستجوی <video src=...>
-    video_pattern = r'<video[^>]+src=["\'](.*?)["\']'
-    match = re.search(video_pattern, summary)
-    if match:
-        return match.group(1)
-    # جستجوی <source src=...> (معمولاً mp4)
-    source_pattern = r'<source[^>]+src=["\'](.*?)["\']'
-    match = re.search(source_pattern, summary)
-    if match:
-        return match.group(1)
-    # جستجوی iframe با src (ممکن است لینک ویدیو باشد، ولی تلگرام ممکن است نتواند پخش کند)
-    iframe_pattern = r'<iframe[^>]+src=["\'](.*?)["\']'
-    match = re.search(iframe_pattern, summary)
-    if match:
-        url = match.group(1)
-        # فقط در صورتی که به mp4 اشاره کند
-        if '.mp4' in url:
-            return url
+            if 'url' in enc and enc.get('type', '').startswith('video'):
+                return enc['url']
     return None
-
-# ---------- دریافت متن کامل مقاله ----------
-def fetch_article_text(url):
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-        }
-        resp = requests.get(url, timeout=10, headers=headers)
-        if resp.status_code == 200:
-            soup = BeautifulSoup(resp.content, 'html.parser')
-            # استخراج تگ‌های p (پاراگراف‌ها)
-            paragraphs = soup.find_all('p')
-            text = ' '.join([p.get_text().strip() for p in paragraphs if p.get_text().strip()])
-            if not text:
-                # اگر پاراگراف نبود، کل متن را بردار
-                text = soup.get_text(separator=' ', strip=True)
-            return text[:3000]  # حداکثر ۳۰۰۰ کاراکتر برای AI
-        return ""
-    except Exception as e:
-        print(f"Failed to fetch article: {e}")
-        return ""
-
-# ---------- توابع AI ----------
-def ai_translate_and_summarize(title, content, service_name, api_key):
-    prompt = f"""
-You are an expert news summarizer. You will receive a news title and its content (may be partial). Your task is to produce a concise but **complete** summary in Persian (2-3 sentences) that captures the most important facts. Follow these rules strictly:
-
-1. Translate the title to Persian if needed.
-2. In the summary:
-   - Include all specific numbers, prices, amounts, percentages, dates, names, and conditions mentioned in the title or content.
-   - If the title contains key details (e.g., amounts, dates), you MUST include them in the summary.
-   - Do not use generic phrases like "جزئیات را بخوانید" or "اطلاعات بیشتر در گزارش". Instead, state the facts directly.
-   - If a necessary detail is missing from both title and content, write "جزئیات بیشتر اعلام نشده است" at the end of the summary.
-   - Ensure the summary answers: who, what, when, how much, and any other critical questions.
-
-3. Output exactly in this format, with no extra commentary:
-TITLE: <translated title>
-SUMMARY: <summary>
-
-Example of a good summary:
-Title: "آغاز شارژ کالابرگ از فردا ۱۵ شهریور ۱۴۰۵ / به حساب این خانوارها ۵.۰۰۰.۰۰۰ تومان واریز می‌شود"
-Summary: "شارژ کالابرگ از فردا ۱۵ شهریور ۱۴۰۵ آغاز می‌شود و مبلغ ۵,۰۰۰,۰۰۰ تومان به حساب خانوارهای مشمول واریز خواهد شد."
-
-Now process the following:
-Title: {title}
-Content: {content[:2500]}
-"""
-    try:
-        if service_name == "openai":
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            payload = {
-                "model": "gpt-3.5-turbo",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-            }
-            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=15)
-            if resp.status_code != 200:
-                raise Exception(f"OpenAI API error: {resp.status_code}")
-            text = resp.json()["choices"][0]["message"]["content"]
-
-        elif service_name == "deepseek":
-            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-            payload = {
-                "model": "deepseek-chat",
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.2,
-            }
-            resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=15)
-            if resp.status_code != 200:
-                raise Exception(f"DeepSeek API error: {resp.status_code}")
-            text = resp.json()["choices"][0]["message"]["content"]
-
-        elif service_name == "cohere":
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
-            payload = {
-                "model": "command-r",
-                "message": prompt,
-                "temperature": 0.2,
-                "preamble": "You are a helpful news assistant that translates and summarizes news.",
-            }
-            resp = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=15)
-            if resp.status_code != 200:
-                raise Exception(f"Cohere API error: {resp.status_code}")
-            text = resp.json()["text"]
-        else:
-            return None
-
-        translated_title = ""
-        summary = ""
-        for line in text.split('\n'):
-            line = line.strip()
-            if line.startswith("TITLE:"):
-                translated_title = line.replace("TITLE:", "").strip()
-            elif line.startswith("SUMMARY:"):
-                summary = line.replace("SUMMARY:", "").strip()
-        if not translated_title:
-            translated_title = title
-        return translated_title, summary
-    except Exception as e:
-        print(f"{service_name} error: {e}")
-        return None
-
-def fallback_translate_and_summarize(title, content):
-    try:
-        translated_title = translator.translate(title) if title else ""
-        summary_clean = clean_html(content)
-        if len(summary_clean) > 600:
-            summary_clean = summary_clean[:600] + "..."
-        translated_summary = translator.translate(summary_clean) if summary_clean else ""
-        return translated_title, translated_summary
-    except Exception as e:
-        print(f"Fallback error: {e}")
-        return title, content[:200]
-
-def process_with_ai(title, content):
-    # ابتدا سعی می‌کنیم با AI
-    for service_name, key in ai_services:
-        result = ai_translate_and_summarize(title, content, service_name, key)
-        if result:
-            # بررسی اینکه خلاصه حاوی عبارت ممنوع نباشد
-            if "جزئیات را بخوانید" in result[1] or "در این گزارش" in result[1]:
-                # اگر AI خلاصه بد داد، تلاش با fallback
-                return fallback_translate_and_summarize(title, content)
-            return result
-    return fallback_translate_and_summarize(title, content)
-
-# ---------- ارسال خبر ----------
-def send_news_item(item):
-    title = item.get("title", "")
-    summary = item.get("summary", "")
-    link = item.get("link", "")
-    source = item.get("source", "")
-    category = item.get("category", "other")
-    image_url = item.get("image_url", None)
-    video_url = item.get("video_url", None)
-
-    category_emoji = CATEGORY_EMOJIS.get(category, "📰")
-    source_hashtag = SOURCE_HASHTAGS.get(source, f"#{source.replace(' ', '_')}")
-
-    title_escaped = escape_html(title)
-    summary_escaped = escape_html(summary) if summary else ""
-
-    caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
-    if summary_escaped:
-        caption += f"📝 {summary_escaped}\n\n"
-    caption += f"{source_hashtag}\n"
-    caption += f"🔗 {CHANNEL_LINK}\n\n"
-    caption += SLOGAN
-
-    # اولویت: ویدیو، عکس، متن
-    if video_url:
-        success = send_telegram_video(video_url, caption)
-        if not success:
-            if image_url:
-                success = send_telegram_photo(image_url, caption)
-            else:
-                success = send_telegram_message(caption)
-    elif image_url:
-        success = send_telegram_photo(image_url, caption)
-        if not success:
-            success = send_telegram_message(caption)
-    else:
-        success = send_telegram_message(caption)
-
-    return success
 
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
@@ -525,7 +334,219 @@ def send_telegram_video(video_url, caption):
         print(f"Error sending video: {e}")
         return False
 
-# ---------- حلقه اصلی ----------
+# ---------- توابع AI ----------
+def ai_translate_and_summarize(title, content, service_name, api_key):
+    prompt = f"""
+You are a news assistant. I give you a news title and its content. Do two things:
+1. Translate the title to Persian (if it's not already Persian).
+2. Write a concise but **complete** summary in Persian (2 to 3 sentences) that captures the main point AND includes all important numbers, names, percentages, prices, scores, lineup details, dates, or other specific facts mentioned in the content. Do not omit numerical details. The summary should be like a short news lead that gives the reader the essential information without extra background. It must not end abruptly or leave out the "how much", "who", "what", "when".
+
+Title: {title}
+Content: {content[:2000]}
+
+Return exactly in this format:
+TITLE: <translated title>
+SUMMARY: <summary>
+"""
+    try:
+        if service_name == "openai":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-3.5-turbo",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+            }
+            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=15)
+            if resp.status_code != 200:
+                raise Exception(f"OpenAI API error: {resp.status_code}")
+            text = resp.json()["choices"][0]["message"]["content"]
+
+        elif service_name == "deepseek":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "deepseek-chat",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+            }
+            resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=15)
+            if resp.status_code != 200:
+                raise Exception(f"DeepSeek API error: {resp.status_code}")
+            text = resp.json()["choices"][0]["message"]["content"]
+
+        elif service_name == "cohere":
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            payload = {
+                "model": "command-r",
+                "message": prompt,
+                "temperature": 0.3,
+                "preamble": "You are a helpful news assistant that translates and summarizes news.",
+            }
+            resp = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=15)
+            if resp.status_code != 200:
+                raise Exception(f"Cohere API error: {resp.status_code}")
+            text = resp.json()["text"]
+        else:
+            return None
+
+        translated_title = ""
+        summary = ""
+        for line in text.split('\n'):
+            line = line.strip()
+            if line.startswith("TITLE:"):
+                translated_title = line.replace("TITLE:", "").strip()
+            elif line.startswith("SUMMARY:"):
+                summary = line.replace("SUMMARY:", "").strip()
+        if not translated_title:
+            translated_title = title
+        return translated_title, summary
+    except Exception as e:
+        print(f"{service_name} error: {e}")
+        return None
+
+def fallback_translate_and_summarize(title, content):
+    try:
+        translated_title = translator.translate(title) if title else ""
+        summary_clean = clean_html(content)
+        if len(summary_clean) > 600:
+            summary_clean = summary_clean[:600] + "..."
+        translated_summary = translator.translate(summary_clean) if summary_clean else ""
+        return translated_title, translated_summary
+    except Exception as e:
+        print(f"Fallback error: {e}")
+        return title, content[:200]
+
+def process_with_ai(title, content):
+    for service_name, key in ai_services:
+        result = ai_translate_and_summarize(title, content, service_name, key)
+        if result:
+            return result
+    return fallback_translate_and_summarize(title, content)
+
+# ---------- ارسال خبر ----------
+def send_news_item(item):
+    title = item.get("title", "")
+    summary = item.get("summary", "")
+    link = item.get("link", "")
+    source = item.get("source", "")
+    category = item.get("category", "other")
+    image_url = item.get("image_url", None)
+    video_url = item.get("video_url", None)
+
+    category_emoji = CATEGORY_EMOJIS.get(category, "📰")
+    source_hashtag = SOURCE_HASHTAGS.get(source, f"#{source.replace(' ', '_')}")
+
+    title_escaped = escape_html(title)
+    summary_escaped = escape_html(summary) if summary else ""
+
+    caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
+    if summary_escaped:
+        caption += f"📝 {summary_escaped}\n\n"
+    caption += f"{source_hashtag}\n"
+    caption += f"🔗 {CHANNEL_LINK}\n\n"
+    caption += SLOGAN
+
+    if video_url:
+        success = send_telegram_video(video_url, caption)
+        if not success:
+            if image_url:
+                success = send_telegram_photo(image_url, caption)
+            else:
+                success = send_telegram_message(caption)
+    elif image_url:
+        success = send_telegram_photo(image_url, caption)
+        if not success:
+            success = send_telegram_message(caption)
+    else:
+        success = send_telegram_message(caption)
+
+    return success
+
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
-    sent_
+    sent_titles = load_list_from_file(SENT_TITLES_FILE)
+
+    error_keywords = ["error", "500", "server", "not found", "404", "خطا", "مشکل"]
+
+    for source_name, feed_url in RSS_FEEDS:
+        print(f"Checking feed: {source_name} - {feed_url}")
+        try:
+            feed = feedparser.parse(feed_url)
+        except Exception as e:
+            print(f"Feed parse error for {source_name}: {e}")
+            continue
+
+        if feed.bozo:
+            print(f"Feed {source_name} has bozo error, skipping.")
+            continue
+
+        if not feed.entries:
+            print(f"Feed {source_name} returned no entries.")
+            continue
+
+        count_from_source = 0
+        for entry in feed.entries:
+            if count_from_source >= 5:  # حداکثر ۵ خبر از هر منبع
+                break
+
+            link = entry.get("link", "")
+            title = entry.get("title", "بدون عنوان")
+            if not link:
+                continue
+
+            if any(keyword in title.lower() for keyword in error_keywords):
+                print(f"Skipped (error-like title): {title}")
+                continue
+
+            translated_title, translated_summary = process_with_ai(title, entry.get("summary", entry.get("description", "")))
+            if not translated_title:
+                translated_title = title
+
+            if is_unwanted(title, translated_title, translated_summary):
+                print(f"Skipped (unwanted): {title}")
+                continue
+
+            if is_local_news(title, translated_title, translated_summary):
+                print(f"Skipped (local): {title}")
+                continue
+
+            importance_score = calculate_importance(title, translated_title, translated_summary)
+            if importance_score < IMPORTANCE_THRESHOLD:
+                print(f"Skipped (low importance, score {importance_score}): {title}")
+                continue
+
+            norm_title = normalize_title(translated_title if translated_title else title)
+
+            if is_duplicate_title(norm_title, sent_titles):
+                print(f"Skipped (duplicate): {title}")
+                continue
+
+            news_item = {
+                "title": translated_title,
+                "summary": translated_summary,
+                "link": link,
+                "source": source_name,
+                "category": classify_news(title, translated_summary),
+                "image_url": extract_image_url(entry),
+                "video_url": extract_video_url(entry),
+            }
+
+            success = send_news_item(news_item)
+            if success:
+                print(f"Sent: {translated_title}")
+                sent_links.add(link)
+                sent_titles.append(norm_title)
+                count_from_source += 1
+                time.sleep(1)
+            else:
+                print(f"Failed to send: {title}")
+
+    save_set_to_file(SENT_LINKS_FILE, sent_links)
+    save_list_to_file(SENT_TITLES_FILE, sent_titles)
+    print("Finished.")
+
+if __name__ == "__main__":
+    fetch_and_send()
