@@ -126,7 +126,7 @@ SOURCE_HASHTAGS = {
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
-SLOGAN = "🔔 برای از دست ندادن اخبار مهم ایران و جهان، ما را دنبال کنید."
+SLOGAN = "🔔 نبض دنیا؛ اخبار فوری، مستند و قابل اعتماد از خبرگزاری‌های معتبر"
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
