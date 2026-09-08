@@ -267,19 +267,51 @@ def extract_image_url(entry):
             if url:
                 return url
     return None
-
 def extract_video_url(entry):
+    # 1) media:content با medium=video یا type=video
     if 'media_content' in entry:
         for media in entry.media_content:
-            if 'url' in media and media.get('type', '').startswith('video'):
-                return media['url']
-            if 'url' in media and 'video' in media.get('medium', ''):
-                return media['url']
+            url = media.get('url', '')
+            if not url:
+                continue
+            medium = media.get('medium', '').lower()
+            type_attr = media.get('type', '').lower()
+            if medium == 'video' or type_attr.startswith('video') or 'video' in url:
+                return url
+
+    # 2) enclosures با type شامل video
     if 'enclosures' in entry:
         for enc in entry.enclosures:
-            if 'url' in enc and enc.get('type', '').startswith('video'):
-                return enc['url']
+            url = enc.get('url', '')
+            type_attr = enc.get('type', '').lower()
+            if url and ('video' in type_attr or 'mpeg' in type_attr or 'mp4' in url or 'm3u8' in url):
+                return url
+
+    # 3) در summary/description: تگ‌های video, source, iframe با لینک مستقیم
+    summary = entry.get('summary', entry.get('description', ''))
+    patterns = [
+        r'<video[^>]+src=["\'](.*?)["\']',
+        r'<source[^>]+src=["\'](.*?)["\']',
+        r'<iframe[^>]+src=["\'](.*?)["\']',
+        r'https?://[^\s"\']+\.(?:mp4|m3u8|webm|ogg)(?:\?[^\s"\']*)?',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, summary, re.IGNORECASE)
+        if match:
+            url = match.group(1) if match.groups() else match.group(0)
+            # اگر iframe بود و mp4 داخلش نبود، از آن صرف‌نظر کن
+            if 'iframe' in pattern and not ('mp4' in url or 'm3u8' in url):
+                continue
+            return url
+
+    # 4) برخی فیدها لینک ویدیو را در <link> یا <guid> می‌دهند (مثل YouTube)
+    if 'link' in entry:
+        link = entry.link
+        if re.search(r'(youtube\.com|youtu\.be|vimeo\.com|mp4|m3u8)', link, re.IGNORECASE):
+            return link
+
     return None
+
 
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
