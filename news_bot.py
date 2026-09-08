@@ -573,6 +573,20 @@ def fetch_and_send():
                 "image_url": extract_image_url(entry),
                 "video_url": extract_video_url(entry),
             }
+            news_item = {
+    "title": translated_title,
+    "summary": translated_summary,
+    "link": link,
+    "source": source_name,
+    "category": classify_news(title, translated_summary),
+    "image_url": extract_image_url(entry),
+    "video_url": extract_video_url(entry),
+}
+
+# 🔍 خط جدید برای دیباگ
+print(f"Video URL for {title}: {news_item.get('video_url', 'None')}")
+
+success = send_news_item(news_item)
 
             success = send_news_item(news_item)
             if success:
