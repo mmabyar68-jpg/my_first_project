@@ -269,7 +269,6 @@ def extract_image_url(entry):
     return None
 
 def extract_video_url(entry):
-    # 1) media:content با medium=video یا type=video
     if 'media_content' in entry:
         for media in entry.media_content:
             url = media.get('url', '')
@@ -279,16 +278,12 @@ def extract_video_url(entry):
             type_attr = media.get('type', '').lower()
             if medium == 'video' or type_attr.startswith('video') or 'video' in url:
                 return url
-
-    # 2) enclosures با type شامل video
     if 'enclosures' in entry:
         for enc in entry.enclosures:
             url = enc.get('url', '')
             type_attr = enc.get('type', '').lower()
             if url and ('video' in type_attr or 'mpeg' in type_attr or 'mp4' in url or 'm3u8' in url):
                 return url
-
-    # 3) در summary/description: تگ‌های video, source, iframe با لینک مستقیم
     summary = entry.get('summary', entry.get('description', ''))
     patterns = [
         r'<video[^>]+src=["\'](.*?)["\']',
@@ -303,13 +298,10 @@ def extract_video_url(entry):
             if 'iframe' in pattern and not ('mp4' in url or 'm3u8' in url):
                 continue
             return url
-
-    # 4) برخی فیدها لینک ویدیو را در <link> یا <guid> می‌دهند (مثل YouTube)
     if 'link' in entry:
         link = entry.link
         if re.search(r'(youtube\.com|youtu\.be|vimeo\.com|mp4|m3u8)', link, re.IGNORECASE):
             return link
-
     return None
 
 def escape_html(text):
@@ -528,7 +520,7 @@ def fetch_and_send():
 
         count_from_source = 0
         for entry in feed.entries:
-            if count_from_source >= 5:  # حداکثر ۵ خبر از هر منبع
+            if count_from_source >= 5:
                 break
 
             link = entry.get("link", "")
