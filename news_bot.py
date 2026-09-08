@@ -459,6 +459,7 @@ def process_with_ai(title, content):
 
 # ---------- ارسال خبر ----------
 def send_news_item(item):
+def send_news_item(item):
     title = item.get("title", "")
     summary = item.get("summary", "")
     link = item.get("link", "")
@@ -474,12 +475,12 @@ def send_news_item(item):
     summary_escaped = escape_html(summary) if summary else ""
 
     caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
-if summary_escaped:
-    caption += f"📝 {summary_escaped}\n\n"
-caption += f"{source_hashtag}\n"
-caption += f"📎 <a href='{link}'>منبع خبر را اینجا ببینید</a>\n"
-caption += f"🔗 {CHANNEL_LINK}\n\n"
-caption += SLOGAN
+    if summary_escaped:
+        caption += f"📝 {summary_escaped}\n\n"
+    caption += f"{source_hashtag}\n"
+    caption += f"📎 <a href='{link}'>منبع خبر را اینجا ببینید</a>\n"
+    caption += f"🔗 {CHANNEL_LINK}\n\n"
+    caption += SLOGAN
 
     if video_url:
         success = send_telegram_video(video_url, caption)
