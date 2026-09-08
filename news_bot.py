@@ -336,7 +336,7 @@ def send_telegram_video(video_url, caption):
 
 # ---------- توابع AI ----------
 
-           def ai_translate_and_summarize(title, content, service_name, api_key):
+    def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = f"""You are an expert news summarizer. I give you a news title and its content (may be partial). Your task is to produce a detailed but concise summary in Persian (about 4-5 sentences, or 80-120 words) that captures all the important facts. Follow these rules strictly:
 
 1. Translate the title to Persian if needed.
@@ -416,9 +416,7 @@ Content: {content[:3000]}
         return translated_title, summary
     except Exception as e:
         print(f"{service_name} error: {e}")
-        return None 
-        
-
+        return None
 def fallback_translate_and_summarize(title, content):
     try:
         translated_title = translator.translate(title) if title else ""
