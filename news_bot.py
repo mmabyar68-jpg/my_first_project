@@ -526,4 +526,36 @@ def fetch_and_send():
                 print(f"Skipped (low importance, score {importance_score}): {title}")
                 continue
 
-            norm_title = normal
+            norm_title = normalize_title(translated_title if translated_title else title)
+
+            if is_duplicate_title(norm_title, sent_titles):
+                print(f"Skipped (duplicate): {title}")
+                continue
+
+            news_item = {
+                "title": translated_title,
+                "summary": translated_summary,
+                "link": link,
+                "source": source_name,
+                "category": classify_news(title, translated_summary),
+                "image_url": extract_image_url(entry),
+                "video_url": extract_video_url(entry),
+            }
+
+            success = send_news_item(news_item)
+            if success:
+                print(f"Sent: {translated_title}")
+                sent_links.add(link)
+                sent_titles.append(norm_title)
+                count_from_source += 1
+                time.sleep(1)
+            else:
+                print(f"Failed to send: {title}")
+
+    # ذخیره‌سازی
+    save_set_to_file(SENT_LINKS_FILE, sent_links)
+    save_list_to_file(SENT_TITLES_FILE, sent_titles)
+    print("Finished.")
+
+if __name__ == "__main__":
+    fetch_and_send()
