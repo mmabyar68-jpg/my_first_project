@@ -176,7 +176,6 @@ def is_unwanted(title, translated_title="", translated_summary=""):
     return False
 
 def is_local_news(title, translated_title="", translated_summary=""):
-    """بررسی وجود کلمات محلی/استانی در عنوان یا خلاصه"""
     combined = (title + " " + translated_title + " " + translated_summary).lower()
     for word in LOCAL_BLACKLIST:
         if word in combined:
@@ -184,7 +183,6 @@ def is_local_news(title, translated_title="", translated_summary=""):
     return False
 
 def calculate_importance(title, translated_title, summary=""):
-    """محاسبه امتیاز اهمیت خبر"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
@@ -335,8 +333,7 @@ def send_telegram_video(video_url, caption):
         return False
 
 # ---------- توابع AI ----------
-
-    def ai_translate_and_summarize(title, content, service_name, api_key):
+def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = f"""You are an expert news summarizer. I give you a news title and its content (may be partial). Your task is to produce a detailed but concise summary in Persian (about 4-5 sentences, or 80-120 words) that captures all the important facts. Follow these rules strictly:
 
 1. Translate the title to Persian if needed.
@@ -417,6 +414,7 @@ Content: {content[:3000]}
     except Exception as e:
         print(f"{service_name} error: {e}")
         return None
+
 def fallback_translate_and_summarize(title, content):
     try:
         translated_title = translator.translate(title) if title else ""
@@ -528,35 +526,4 @@ def fetch_and_send():
                 print(f"Skipped (low importance, score {importance_score}): {title}")
                 continue
 
-            norm_title = normalize_title(translated_title if translated_title else title)
-
-            if is_duplicate_title(norm_title, sent_titles):
-                print(f"Skipped (duplicate): {title}")
-                continue
-
-            news_item = {
-                "title": translated_title,
-                "summary": translated_summary,
-                "link": link,
-                "source": source_name,
-                "category": classify_news(title, translated_summary),
-                "image_url": extract_image_url(entry),
-                "video_url": extract_video_url(entry),
-            }
-
-            success = send_news_item(news_item)
-            if success:
-                print(f"Sent: {translated_title}")
-                sent_links.add(link)
-                sent_titles.append(norm_title)
-                count_from_source += 1
-                time.sleep(1)
-            else:
-                print(f"Failed to send: {title}")
-
-    save_set_to_file(SENT_LINKS_FILE, sent_links)
-    save_list_to_file(SENT_TITLES_FILE, sent_titles)
-    print("Finished.")
-
-if __name__ == "__main__":
-    fetch_and_send()
+            norm_title = normal
