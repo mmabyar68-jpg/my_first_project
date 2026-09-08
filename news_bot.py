@@ -337,12 +337,28 @@ def send_telegram_video(video_url, caption):
 # ---------- توابع AI ----------
 def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = f"""
-You are a news assistant. I give you a news title and its content. Do two things:
-1. Translate the title to Persian (if it's not already Persian).
-2. Write a concise but **complete** summary in Persian (2 to 3 sentences) that captures the main point AND includes all important numbers, names, percentages, prices, scores, lineup details, dates, or other specific facts mentioned in the content. Do not omit numerical details. The summary should be like a short news lead that gives the reader the essential information without extra background. It must not end abruptly or leave out the "how much", "who", "what", "when".
+You are an expert news summarizer. I give you a news title and its content (may be partial). Your task is to produce a **detailed but concise summary** in Persian (about 4-5 sentences, or 80-120 words) that captures all the important facts. Follow these rules strictly:
 
+1. Translate the title to Persian if needed.
+2. In the summary:
+   - Include ALL specific numbers, prices, amounts, percentages, dates, names, conditions, and any table data if mentioned.
+   - If the title contains key details (e.g., amounts, dates, lists), you MUST include them in the summary.
+   - Do not use generic phrases like "جزئیات را بخوانید" or "اطلاعات بیشتر در گزارش". Instead, state the facts directly.
+   - If a necessary detail is missing from both title and content, write "جزئیات بیشتر اعلام نشده است" at the end.
+   - The summary should be longer than a typical headline: about 4-5 sentences, providing a good overview without being the full article.
+
+3. Output exactly in this format, with no extra commentary:
+TITLE: <translated title>
+SUMMARY: <summary>
+
+Example of a good detailed summary:
+Title: "آغاز شارژ کالابرگ از فردا ۱۵ شهریور ۱۴۰۵ / به حساب این خانوارها ۵.۰۰۰.۰۰۰ تومان واریز می‌شود"
+Summary: "شارژ کالابرگ از فردا ۱۵ شهریور ۱۴۰۵ آغاز می‌شود. مبلغ ۵,۰۰۰,۰۰۰ تومان به حساب خانوارهای مشمول واریز خواهد شد. این مبلغ برای خرید کالاهای اساسی قابل استفاده است. جزئیات بیشتر در مورد شرایط و مشمولان اعلام نشده است."
+
+Now process the following:
 Title: {title}
-Content: {content[:2000]}
+Content: {content[:3000]}
+"""
 
 Return exactly in this format:
 TITLE: <translated title>
