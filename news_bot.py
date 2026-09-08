@@ -427,8 +427,8 @@ def fallback_translate_and_summarize(title, content):
     try:
         translated_title = translator.translate(title) if title else ""
         summary_clean = clean_html(content)
-        if len(summary_clean) > 600:
-            summary_clean = summary_clean[:600] + "..."
+        if len(summary_clean) > 1000:
+            summary_clean = summary_clean[:1000] + "..."
         translated_summary = translator.translate(summary_clean) if summary_clean else ""
         return translated_title, translated_summary
     except Exception as e:
