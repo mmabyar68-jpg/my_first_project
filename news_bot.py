@@ -526,3 +526,5 @@ def fetch_and_send():
         if not feed.entries:
             print(f"Feed {source_name} returned no entries.")
             conti
+            if __name__ == "__main__":
+    fetch_and_send()
