@@ -269,7 +269,6 @@ def extract_image_url(entry):
     return None
 
 def extract_video_url(entry):
-    # 1) media:content با medium=video یا type=video
     if 'media_content' in entry:
         for media in entry.media_content:
             url = media.get('url', '')
@@ -279,16 +278,12 @@ def extract_video_url(entry):
             type_attr = media.get('type', '').lower()
             if medium == 'video' or type_attr.startswith('video') or 'video' in url:
                 return url
-
-    # 2) enclosures با type شامل video
     if 'enclosures' in entry:
         for enc in entry.enclosures:
             url = enc.get('url', '')
             type_attr = enc.get('type', '').lower()
             if url and ('video' in type_attr or 'mpeg' in type_attr or 'mp4' in url or 'm3u8' in url):
                 return url
-
-    # 3) در summary/description: تگ‌های video, source, iframe با لینک مستقیم
     summary = entry.get('summary', entry.get('description', ''))
     patterns = [
         r'<video[^>]+src=["\'](.*?)["\']',
@@ -303,13 +298,10 @@ def extract_video_url(entry):
             if 'iframe' in pattern and not ('mp4' in url or 'm3u8' in url):
                 continue
             return url
-
-    # 4) برخی فیدها لینک ویدیو را در <link> یا <guid> می‌دهند (مثل YouTube)
     if 'link' in entry:
         link = entry.link
         if re.search(r'(youtube\.com|youtu\.be|vimeo\.com|mp4|m3u8)', link, re.IGNORECASE):
             return link
-
     return None
 
 def escape_html(text):
@@ -525,6 +517,72 @@ def fetch_and_send():
 
         if not feed.entries:
             print(f"Feed {source_name} returned no entries.")
-            conti
-            if __name__ == "__main__":
+            continue
+
+        count_from_source = 0
+        for entry in feed.entries:
+            if count_from_source >= 5:
+                break
+
+            try:
+                link = entry.get("link", "")
+                title = entry.get("title", "بدون عنوان")
+                if not link:
+                    continue
+
+                if any(keyword in title.lower() for keyword in error_keywords):
+                    print(f"Skipped (error-like title): {title}")
+                    continue
+
+                translated_title, translated_summary = process_with_ai(title, entry.get("summary", entry.get("description", "")))
+                if not translated_title:
+                    translated_title = title
+
+                if is_unwanted(title, translated_title, translated_summary):
+                    print(f"Skipped (unwanted): {title}")
+                    continue
+
+                if is_local_news(title, translated_title, translated_summary):
+                    print(f"Skipped (local): {title}")
+                    continue
+
+                importance_score = calculate_importance(title, translated_title, translated_summary)
+                if importance_score < IMPORTANCE_THRESHOLD:
+                    print(f"Skipped (low importance, score {importance_score}): {title}")
+                    continue
+
+                norm_title = normalize_title(translated_title if translated_title else title)
+
+                if is_duplicate_title(norm_title, sent_titles):
+                    print(f"Skipped (duplicate): {title}")
+                    continue
+
+                news_item = {
+                    "title": translated_title,
+                    "summary": translated_summary,
+                    "link": link,
+                    "source": source_name,
+                    "category": classify_news(title, translated_summary),
+                    "image_url": extract_image_url(entry),
+                    "video_url": extract_video_url(entry),
+                }
+
+                success = send_news_item(news_item)
+                if success:
+                    print(f"Sent: {translated_title}")
+                    sent_links.add(link)
+                    sent_titles.append(norm_title)
+                    count_from_source += 1
+                    time.sleep(1)
+                else:
+                    print(f"Failed to send: {title}")
+            except Exception as e:
+                print(f"Error processing entry from {source_name}: {e}")
+                continue
+
+    save_set_to_file(SENT_LINKS_FILE, sent_links)
+    save_list_to_file(SENT_TITLES_FILE, sent_titles)
+    print("Finished.")
+
+if __name__ == "__main__":
     fetch_and_send()
