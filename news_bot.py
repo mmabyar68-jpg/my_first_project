@@ -474,12 +474,12 @@ def send_news_item(item):
     summary_escaped = escape_html(summary) if summary else ""
 
     caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
-if summary_escaped:
-    caption += f"📝 {summary_escaped}\n\n"
-caption += f"{source_hashtag}  #نبض_دنیا\n"
-caption += f"📎 <a href='{link}'>منبع خبر را اینجا ببینید</a>\n"
-caption += f"🔗 {CHANNEL_LINK}\n\n"
-caption += SLOGAN
+    if summary_escaped:
+        caption += f"📝 {summary_escaped}\n\n"
+    caption += f"{source_hashtag}  #نبض_دنیا\n"
+    caption += f"📎 <a href='{link}'>منبع خبر را اینجا ببینید</a>\n"
+    caption += f"🔗 {CHANNEL_LINK}\n\n"
+    caption += SLOGAN
 
     if video_url:
         success = send_telegram_video(video_url, caption)
@@ -526,63 +526,4 @@ def fetch_and_send():
 
             try:
                 link = entry.get("link", "")
-                title = entry.get("title", "بدون عنوان")
-                if not link:
-                    continue
-
-                if any(keyword in title.lower() for keyword in error_keywords):
-                    print(f"Skipped (error-like title): {title}")
-                    continue
-
-                translated_title, translated_summary = process_with_ai(title, entry.get("summary", entry.get("description", "")))
-                if not translated_title:
-                    translated_title = title
-
-                if is_unwanted(title, translated_title, translated_summary):
-                    print(f"Skipped (unwanted): {title}")
-                    continue
-
-                if is_local_news(title, translated_title, translated_summary):
-                    print(f"Skipped (local): {title}")
-                    continue
-
-                importance_score = calculate_importance(title, translated_title, translated_summary)
-                if importance_score < IMPORTANCE_THRESHOLD:
-                    print(f"Skipped (low importance, score {importance_score}): {title}")
-                    continue
-
-                norm_title = normalize_title(translated_title if translated_title else title)
-
-                if is_duplicate_title(norm_title, sent_titles):
-                    print(f"Skipped (duplicate): {title}")
-                    continue
-
-                news_item = {
-                    "title": translated_title,
-                    "summary": translated_summary,
-                    "link": link,
-                    "source": source_name,
-                    "category": classify_news(title, translated_summary),
-                    "image_url": extract_image_url(entry),
-                    "video_url": extract_video_url(entry),
-                }
-
-                success = send_news_item(news_item)
-                if success:
-                    print(f"Sent: {translated_title}")
-                    sent_links.add(link)
-                    sent_titles.append(norm_title)
-                    count_from_source += 1
-                    time.sleep(1)
-                else:
-                    print(f"Failed to send: {title}")
-            except Exception as e:
-                print(f"Error processing entry from {source_name}: {e}")
-                continue
-
-    save_set_to_file(SENT_LINKS_FILE, sent_links)
-    save_list_to_file(SENT_TITLES_FILE, sent_titles)
-    print("Finished.")
-
-if __name__ == "__main__":
-    fetch_and_send()
+                title = entry.get("title", "
