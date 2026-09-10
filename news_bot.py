@@ -32,7 +32,6 @@ if not ai_services:
 
 # ---------- فیدها ----------
 RSS_FEEDS = [
-    # خارجی
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
@@ -43,8 +42,6 @@ RSS_FEEDS = [
     ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
     ("France 24", "https://www.france24.com/en/rss"),
     ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
-
-    # ایرانی
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
     ("Fars", "https://www.farsnews.ir/rss"),
@@ -83,7 +80,6 @@ IMPORTANT_KEYWORDS = [
     "بسته معیشتی", "تعطیلی ادارات"
 ]
 
-# کلمات نامطلوب (کم‌اهمیت)
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show"
@@ -93,7 +89,6 @@ FA_BLACKLIST = [
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
-# کلمات محلی/استانی که باید رد شوند
 LOCAL_BLACKLIST = [
     "استاندار", "فرماندار", "فرمانداری", "شهردار", "شورای شهر", "بخشدار",
     "استان", "شهرستان", "روستا", "پروژه‌های عمرانی", "عمرانی", "زیرگذر",
@@ -101,10 +96,8 @@ LOCAL_BLACKLIST = [
     "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
 ]
 
-# ---------- تنظیمات اهمیت ----------
-IMPORTANCE_THRESHOLD = 4  # حداقل امتیاز برای ارسال
+IMPORTANCE_THRESHOLD = 4
 
-# ---------- متغیرهای دیگر ----------
 SOURCE_HASHTAGS = {
     "CNN": "#سی_ان_ان",
     "BBC": "#بی_بی_سی",
@@ -131,17 +124,19 @@ SLOGAN = "🔔 نبض دنیا؛ اخبار فوری، مستند و قابل ا
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
-# ---------- توابع کمکی ----------
+
 def load_set_from_file(filename):
     if not os.path.exists(filename):
         return set()
     with open(filename, "r", encoding="utf-8") as f:
         return set(line.strip() for line in f if line.strip())
 
+
 def save_set_to_file(filename, data_set):
     with open(filename, "w", encoding="utf-8") as f:
         for item in data_set:
             f.write(item + "\n")
+
 
 def load_list_from_file(filename):
     if not os.path.exists(filename):
@@ -149,20 +144,24 @@ def load_list_from_file(filename):
     with open(filename, "r", encoding="utf-8") as f:
         return [line.strip() for line in f if line.strip()]
 
+
 def save_list_to_file(filename, data_list):
     with open(filename, "w", encoding="utf-8") as f:
         for item in data_list:
             f.write(item + "\n")
+
 
 def clean_html(raw_html):
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
     return cleantext.strip()
 
+
 def normalize_title(title):
     title = re.sub(r'[^\w\s]', '', title, flags=re.UNICODE)
     title = re.sub(r'\s+', ' ', title).strip().lower()
     return title[:60]
+
 
 def is_unwanted(title, translated_title="", translated_summary=""):
     lower_title = title.lower()
@@ -175,12 +174,14 @@ def is_unwanted(title, translated_title="", translated_summary=""):
             return True
     return False
 
+
 def is_local_news(title, translated_title="", translated_summary=""):
     combined = (title + " " + translated_title + " " + translated_summary).lower()
     for word in LOCAL_BLACKLIST:
         if word in combined:
             return True
     return False
+
 
 def calculate_importance(title, translated_title, summary=""):
     score = 0
@@ -196,12 +197,14 @@ def calculate_importance(title, translated_title, summary=""):
             score += 5
     return score
 
+
 def is_duplicate_title(new_title, existing_titles, threshold=0.85):
     for old_title in existing_titles:
         similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
         if similarity >= threshold:
             return True
     return False
+
 
 def classify_news(title, summary=""):
     text = (title + " " + summary).lower()
@@ -221,6 +224,7 @@ def classify_news(title, summary=""):
                 return cat
     return "other"
 
+
 CATEGORY_EMOJIS = {
     "politics": "🏛️",
     "economy": "💰",
@@ -231,6 +235,7 @@ CATEGORY_EMOJIS = {
     "conflict": "⚔️",
     "other": "📰",
 }
+
 
 def extract_image_url(entry):
     if 'media_content' in entry:
@@ -268,6 +273,7 @@ def extract_image_url(entry):
                 return url
     return None
 
+
 def extract_video_url(entry):
     if 'media_content' in entry:
         for media in entry.media_content:
@@ -304,8 +310,10 @@ def extract_video_url(entry):
             return link
     return None
 
+
 def escape_html(text):
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
 
 def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -323,6 +331,7 @@ def send_telegram_message(text):
         print(f"Error sending message: {e}")
         return False
 
+
 def send_telegram_photo(photo_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
     payload = {
@@ -338,6 +347,7 @@ def send_telegram_photo(photo_url, caption):
     except Exception as e:
         print(f"Error sending photo: {e}")
         return False
+
 
 def send_telegram_video(video_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
@@ -355,7 +365,7 @@ def send_telegram_video(video_url, caption):
         print(f"Error sending video: {e}")
         return False
 
-# ---------- توابع AI ----------
+
 def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = f"""You are an expert news summarizer. I give you a news title and its content (may be partial). Your task is to produce a detailed but concise summary in Persian (about 4-5 sentences, or 80-120 words) that captures all the important facts. Follow these rules strictly:
 
@@ -391,7 +401,6 @@ Content: {content[:3000]}
             if resp.status_code != 200:
                 raise Exception(f"OpenAI API error: {resp.status_code}")
             text = resp.json()["choices"][0]["message"]["content"]
-
         elif service_name == "deepseek":
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             payload = {
@@ -403,7 +412,6 @@ Content: {content[:3000]}
             if resp.status_code != 200:
                 raise Exception(f"DeepSeek API error: {resp.status_code}")
             text = resp.json()["choices"][0]["message"]["content"]
-
         elif service_name == "cohere":
             headers = {
                 "Authorization": f"Bearer {api_key}",
@@ -438,6 +446,7 @@ Content: {content[:3000]}
         print(f"{service_name} error: {e}")
         return None
 
+
 def fallback_translate_and_summarize(title, content):
     try:
         translated_title = translator.translate(title) if title else ""
@@ -450,6 +459,7 @@ def fallback_translate_and_summarize(title, content):
         print(f"Fallback error: {e}")
         return title, content[:200]
 
+
 def process_with_ai(title, content):
     for service_name, key in ai_services:
         result = ai_translate_and_summarize(title, content, service_name, key)
@@ -457,7 +467,7 @@ def process_with_ai(title, content):
             return result
     return fallback_translate_and_summarize(title, content)
 
-# ---------- ارسال خبر ----------
+
 def send_news_item(item):
     title = item.get("title", "")
     summary = item.get("summary", "")
@@ -497,6 +507,7 @@ def send_news_item(item):
 
     return success
 
+
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
     sent_titles = load_list_from_file(SENT_TITLES_FILE)
@@ -526,4 +537,67 @@ def fetch_and_send():
 
             try:
                 link = entry.get("link", "")
-                title = entry.get("title", "
+                title = entry.get("title", "بدون عنوان")
+                if not link:
+                    continue
+
+                if any(keyword in title.lower() for keyword in error_keywords):
+                    print(f"Skipped (error-like title): {title}")
+                    continue
+
+                translated_title, translated_summary = process_with_ai(
+                    title,
+                    entry.get("summary", entry.get("description", ""))
+                )
+                if not translated_title:
+                    translated_title = title
+
+                if is_unwanted(title, translated_title, translated_summary):
+                    print(f"Skipped (unwanted): {title}")
+                    continue
+
+                if is_local_news(title, translated_title, translated_summary):
+                    print(f"Skipped (local): {title}")
+                    continue
+
+                importance_score = calculate_importance(title, translated_title, translated_summary)
+                if importance_score < IMPORTANCE_THRESHOLD:
+                    print(f"Skipped (low importance, score {importance_score}): {title}")
+                    continue
+
+                norm_title = normalize_title(translated_title if translated_title else title)
+
+                if is_duplicate_title(norm_title, sent_titles):
+                    print(f"Skipped (duplicate): {title}")
+                    continue
+
+                news_item = {
+                    "title": translated_title,
+                    "summary": translated_summary,
+                    "link": link,
+                    "source": source_name,
+                    "category": classify_news(title, translated_summary),
+                    "image_url": extract_image_url(entry),
+                    "video_url": extract_video_url(entry),
+                }
+
+                success = send_news_item(news_item)
+                if success:
+                    print(f"Sent: {translated_title}")
+                    sent_links.add(link)
+                    sent_titles.append(norm_title)
+                    count_from_source += 1
+                    time.sleep(1)
+                else:
+                    print(f"Failed to send: {title}")
+            except Exception as e:
+                print(f"Error processing entry from {source_name}: {e}")
+                continue
+
+    save_set_to_file(SENT_LINKS_FILE, sent_links)
+    save_list_to_file(SENT_TITLES_FILE, sent_titles)
+    print("Finished.")
+
+
+if __name__ == "__main__":
+    fetch_and_send()
