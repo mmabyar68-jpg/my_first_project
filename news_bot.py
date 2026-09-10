@@ -42,13 +42,9 @@ RSS_FEEDS = [
     ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
     ("France 24", "https://www.france24.com/en/rss"),
     ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
-
-    # Video-focused feeds
     ("Reuters Video", "https://www.reuters.com/rssFeed/videoNews"),
     ("AP Video", "https://apnews.com/apf-video"),
     ("Euronews Video", "https://www.euronews.com/rss?level=theme&name=news"),
-
-    # Iranian
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
     ("Fars", "https://www.farsnews.ir/rss"),
@@ -66,16 +62,14 @@ URGENT_KEYWORDS = [
     "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری",
     "سکه", "ارز", "بانک مرکزی",
     "تعطیلی مدارس", "تعطیلی ادارات", "کالابرگ", "یارانه", "سهام عدالت",
-    "وام", "کمک معیشتی", "بسته معیشتی"
+    "وام", "کمک معیشتی", "بسته معیشتی",
+    "قهرمانی", "فینال", "دربی", "الکلاسیکو"
 ]
 
 IMPORTANT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "اقتصاد",
     "تورم", "نفت", "قیمت", "دلار", "طلا", "بورس", "انتخابات", "رئیس‌جمهور",
-    "دولت", "مجلس", "قانون"،"ورزش", "فوتبال", "لیگ", "جام", "مسی", "رونالدو", "پرسپولیس", "استقلال",
-"بایرن", "رئال", "بارسلونا", "منچستر", "لیورپول", "چلسی", "آرسنال",
-"یوونتوس", "میلان", "پاریس", "دورتموند", "مربی", "گل", "بازی", "برد",
-"باخت", "تساوی", "قهرمانی", "المپیک", "ملی", "تیم ملی", "بحران", "کرونا", "ویروس", "واکسن", "صلح",
+    "دولت", "مجلس", "قانون", "بحران", "کرونا", "ویروس", "واکسن", "صلح",
     "مذاکره", "توافق", "جنگنده", "موشک", "هسته‌ای", "آمریکا", "ایران",
     "چین", "روسیه", "اوکراین", "فلسطین", "اسرائیل", "عراق", "افغانستان",
     "پاکستان", "هند", "ترکیه", "اروپا", "انگلیس", "فرانسه", "آلمان",
@@ -86,7 +80,12 @@ IMPORTANT_KEYWORDS = [
     "بازار سرمایه", "بازار مالی", "سپرده", "وام", "اعتبار", "مالیات",
     "یارانه", "بودجه",
     "تعطیلی مدارس", "کالابرگ", "یارانه", "سهام عدالت", "کمک معیشتی",
-    "بسته معیشتی", "تعطیلی ادارات"
+    "بسته معیشتی", "تعطیلی ادارات",
+    # Sports keywords
+    "ورزش", "فوتبال", "لیگ", "جام", "مسی", "رونالدو", "پرسپولیس", "استقلال",
+    "بایرن", "رئال", "بارسلونا", "منچستر", "لیورپول", "چلسی", "آرسنال",
+    "یوونتوس", "میلان", "پاریس", "دورتموند", "مربی", "گل", "بازی", "برد",
+    "باخت", "تساوی", "قهرمانی", "المپیک", "ملی", "تیم ملی"
 ]
 
 EN_BLACKLIST = [
@@ -94,7 +93,7 @@ EN_BLACKLIST = [
     "entertainment", "gossip", "rumor", "music", "tv", "reality show"
 ]
 FA_BLACKLIST = [
-    "خواننده", "سلبریتی", "بازیگر", "سینما", "فیلم","موسیقی",
+    "خواننده", "سلبریتی", "بازیگر", "سینما", "فیلم", "موسیقی",
     "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
 ]
 
@@ -274,7 +273,6 @@ def extract_image_url(entry):
 
 
 def extract_video_url(entry):
-    # 1. media:content with video
     if 'media_content' in entry:
         for media in entry.media_content:
             url = media.get('url', '')
@@ -286,7 +284,6 @@ def extract_video_url(entry):
                 return url
             if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
                 return url
-    # 2. enclosures with video type
     if 'enclosures' in entry:
         for enc in entry.enclosures:
             url = enc.get('url', '')
@@ -295,7 +292,6 @@ def extract_video_url(entry):
                 return url
             if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
                 return url
-    # 3. search in summary/description
     summary = entry.get('summary', entry.get('description', ''))
     patterns = [
         r'<video[^>]+src=["\'](.*?)["\']',
@@ -306,7 +302,6 @@ def extract_video_url(entry):
         match = re.search(pattern, summary, re.IGNORECASE)
         if match:
             return match.group(1) if match.groups() else match.group(0)
-    # 4. media:group (some feeds use this)
     if 'media_group' in entry:
         for group in entry.media_group:
             if 'media_content' in group:
@@ -318,15 +313,12 @@ def extract_video_url(entry):
 
 
 def fetch_video_from_page(url):
-    """Fetch article page and try to find a video URL."""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
         resp = requests.get(url, timeout=8, headers=headers)
         if resp.status_code != 200:
             return None
         soup = BeautifulSoup(resp.content, 'html.parser')
-
-        # 1. video tag
         for video in soup.find_all('video'):
             src = video.get('src')
             if src and src.startswith('http'):
@@ -335,20 +327,15 @@ def fetch_video_from_page(url):
                 src = source.get('src')
                 if src and src.startswith('http'):
                     return src
-
-        # 2. meta og:video
         for meta in soup.find_all('meta'):
             prop = meta.get('property', '') or meta.get('name', '')
             if prop in ('og:video', 'og:video:url', 'og:video:secure_url', 'twitter:player:stream'):
                 content = meta.get('content', '')
                 if content and re.search(r'\.(mp4|m3u8|webm)', content, re.IGNORECASE):
                     return content
-
-        # 3. look for mp4 links in page source
         mp4_match = re.search(r'https?://[^\s"\'<>]+\.mp4(?:\?[^\s"\'<>]*)?', resp.text)
         if mp4_match:
             return mp4_match.group(0)
-
         return None
     except Exception as e:
         print(f"fetch_video_from_page error: {e}")
@@ -521,13 +508,11 @@ def send_news_item(item):
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
 
-    # Priority: video -> photo -> text
     if video_url:
         print(f"Trying to send video: {video_url}")
         success = send_telegram_video(video_url, caption)
         if success:
             return True
-        # fallback to photo
         if image_url:
             success = send_telegram_photo(image_url, caption)
             if success:
@@ -606,11 +591,9 @@ def fetch_and_send():
                     print(f"Skipped duplicate: {title}")
                     continue
 
-                # Extract video and image from RSS
                 video_url = extract_video_url(entry)
                 image_url = extract_image_url(entry)
 
-                # If no video in RSS, try to fetch from the article page
                 if not video_url:
                     video_url = fetch_video_from_page(link)
                     if video_url:
