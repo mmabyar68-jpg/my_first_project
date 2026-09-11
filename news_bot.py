@@ -38,6 +38,7 @@ RSS_FEEDS = [
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
     ("RT", "https://www.rt.com/rss/"),
+    ("Al Mayadeen", "https://english.almayadeen.net/feed.rss"),
     ("The Guardian", "https://www.theguardian.com/world/rss"),
     ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
     ("France 24", "https://www.france24.com/en/rss"),
@@ -81,7 +82,6 @@ IMPORTANT_KEYWORDS = [
     "یارانه", "بودجه",
     "تعطیلی مدارس", "کالابرگ", "یارانه", "سهام عدالت", "کمک معیشتی",
     "بسته معیشتی", "تعطیلی ادارات",
-    # Sports keywords
     "ورزش", "فوتبال", "لیگ", "جام", "مسی", "رونالدو", "پرسپولیس", "استقلال",
     "بایرن", "رئال", "بارسلونا", "منچستر", "لیورپول", "چلسی", "آرسنال",
     "یوونتوس", "میلان", "پاریس", "دورتموند", "مربی", "گل", "بازی", "برد",
@@ -112,6 +112,7 @@ SOURCE_HASHTAGS = {
     "Reuters": "#رویترز",
     "Al Jazeera": "#الجزیره",
     "RT": "#راشا_تودی",
+    "Al Mayadeen": "#المیادین",
     "Tasnim": "#تسنیم",
     "IRNA": "#ایرنا",
     "The Guardian": "#گاردین",
