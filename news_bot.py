@@ -31,8 +31,16 @@ if COHERE_API_KEY:
 if not ai_services:
     print("No AI API keys found, falling back to deep-translator.")
 
+# ---------- Iranian sources (art filter NOT applied) ----------
+IRANIAN_SOURCES = [
+    "Tasnim", "IRNA", "Fars", "Mehr", "ISNA", "Tabnak", "Eghtesadonline",
+    "Hamshahri", "KhabarOnline", "IMNA", "IBNA", "Hoze Honari", "Shada",
+    "Parseek Art", "Parseek Sport", "Parseek Economic"
+]
+
 # ---------- Feeds ----------
 RSS_FEEDS = [
+    # Foreign sources (art filter applied)
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
@@ -46,6 +54,8 @@ RSS_FEEDS = [
     ("Reuters Video", "https://www.reuters.com/rssFeed/videoNews"),
     ("AP Video", "https://apnews.com/apf-video"),
     ("Euronews Video", "https://www.euronews.com/rss?level=theme&name=news"),
+
+    # Iranian sources (art filter NOT applied)
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
     ("Fars", "https://www.farsnews.ir/rss"),
@@ -53,6 +63,15 @@ RSS_FEEDS = [
     ("ISNA", "https://www.isna.ir/rss"),
     ("Tabnak", "https://www.tabnak.ir/fa/rss/allnews"),
     ("Eghtesadonline", "https://www.eghtesadonline.com/fa/rss/allnews"),
+    ("Hamshahri", "https://www.hamshahrionline.ir/rss"),
+    ("KhabarOnline", "https://www.khabaronline.ir/rss"),
+    ("IMNA", "https://www.imna.ir/rss"),
+    ("IBNA", "https://www.ibna.ir/rss"),
+    ("Hoze Honari", "https://news.hozehonari.ir/rss"),
+    ("Shada", "http://shada.ir/rss"),
+    ("Parseek Art", "http://www.parseek.com/rss/?type=ART"),
+    ("Parseek Sport", "http://www.parseek.com/rss/?type=SPORT"),
+    ("Parseek Economic", "http://www.parseek.com/rss/?type=ECONOMIC"),
 ]
 
 SENT_LINKS_FILE = "sent_links.txt"
@@ -85,16 +104,17 @@ IMPORTANT_KEYWORDS = [
     "ورزش", "فوتبال", "لیگ", "جام", "مسی", "رونالدو", "پرسپولیس", "استقلال",
     "بایرن", "رئال", "بارسلونا", "منچستر", "لیورپول", "چلسی", "آرسنال",
     "یوونتوس", "میلان", "پاریس", "دورتموند", "مربی", "گل", "بازی", "برد",
-    "باخت", "تساوی", "قهرمانی", "المپیک", "ملی", "تیم ملی"
+    "باخت", "تساوی", "قهرمانی", "المپیک", "ملی", "تیم ملی",
+    # Art and cinema keywords
+    "فیلم", "سریال", "بازیگر", "کارگردان", "سینما", "جشنواره", "اسکار",
+    "تئاتر", "نمایش", "هنرمند", "بازیگران", "موسیقی", "کنسرت", "نمایش خانگی"
 ]
 
 EN_BLACKLIST = [
-    "celebrity", "singer", "actor", "actress", "movie", "film",
-    "entertainment", "gossip", "rumor", "music", "tv", "reality show"
+    "celebrity", "singer", "gossip", "rumor", "music", "tv", "reality show"
 ]
 FA_BLACKLIST = [
-    "خواننده", "سلبریتی", "بازیگر", "سینما", "فیلم", "موسیقی",
-    "تلویزیون", "شایعه", "هنرمند", "کنسرت", "آلبوم", "سریال"
+    "خواننده", "سلبریتی", "شایعه", "کنسرت", "آلبوم"
 ]
 
 LOCAL_BLACKLIST = [
@@ -127,6 +147,15 @@ SOURCE_HASHTAGS = {
     "Reuters Video": "#رویترز_ویدیو",
     "AP Video": "#آسوشیتدپرس_ویدیو",
     "Euronews Video": "#یورونیوز",
+    "Hamshahri": "#همشهری",
+    "KhabarOnline": "#خبرآنلاین",
+    "IMNA": "#ایمنا",
+    "IBNA": "#ایبنا",
+    "Hoze Honari": "#حوزه_هنری",
+    "Shada": "#شادا",
+    "Parseek Art": "#پارسیک_هنر",
+    "Parseek Sport": "#پارسیک_ورزش",
+    "Parseek Economic": "#پارسیک_اقتصاد",
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
@@ -226,6 +255,7 @@ def classify_news(title, summary=""):
         "technology": ["فناوری", "هوش مصنوعی", "اینترنت", "ربات", "نرم‌افزار", "استارتاپ", "دیجیتال"],
         "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو"],
         "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل"],
+        "art": ["فیلم", "سریال", "بازیگر", "سینما", "کارگردان", "جشنواره", "تئاتر", "هنرمند"],
         "other": []
     }
     for cat, keywords in categories.items():
@@ -243,6 +273,7 @@ CATEGORY_EMOJIS = {
     "health": "🏥",
     "environment": "🌍",
     "conflict": "⚔️",
+    "art": "🎬",
     "other": "📰",
 }
 
@@ -573,9 +604,11 @@ def fetch_and_send():
                 if not translated_title:
                     translated_title = title
 
-                if is_unwanted(title, translated_title, translated_summary):
-                    print(f"Skipped unwanted: {title}")
-                    continue
+                # Apply unwanted filter ONLY for foreign sources
+                if source_name not in IRANIAN_SOURCES:
+                    if is_unwanted(title, translated_title, translated_summary):
+                        print(f"Skipped unwanted: {title}")
+                        continue
 
                 if is_local_news(title, translated_title, translated_summary):
                     print(f"Skipped local: {title}")
