@@ -107,7 +107,10 @@ IMPORTANT_KEYWORDS = [
     "باخت", "تساوی", "قهرمانی", "المپیک", "ملی", "تیم ملی",
     # Art and cinema keywords
     "فیلم", "سریال", "بازیگر", "کارگردان", "سینما", "جشنواره", "اسکار",
-    "تئاتر", "نمایش", "هنرمند", "بازیگران", "موسیقی", "کنسرت", "نمایش خانگی"
+    "تئاتر", "نمایش", "هنرمند", "بازیگران", "موسیقی", "کنسرت", "نمایش خانگی",
+    # Satire and critique keywords
+    "طنز", "نقد", "کلیپ", "ویدیو", "ویدئو", "پربازدید", "کمدی",
+    "شصت‌چی", "مدیری", "سکانس", "فیلم جدید", "نمایش خانگی"
 ]
 
 EN_BLACKLIST = [
@@ -124,7 +127,7 @@ LOCAL_BLACKLIST = [
     "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
 ]
 
-IMPORTANCE_THRESHOLD = 4
+IMPORTANCE_THRESHOLD = 6
 
 SOURCE_HASHTAGS = {
     "CNN": "#سی_ان_ان",
@@ -203,6 +206,39 @@ def normalize_title(title):
     return title[:60]
 
 
+def is_error_text(text):
+    """تشخیص متن‌های خطا که نباید به‌عنوان خلاصه ارسال شوند"""
+    if not text:
+        return True
+    error_patterns = [
+        "error 500", "error 404", "error 403", "error 502", "error 503",
+        "server error", "internal server error", "that's an error",
+        "that’s an error", "please try again later", "that's all we know",
+        "that’s all we know", "service unavailable", "bad gateway",
+        "no translation", "translation error"
+    ]
+    lower = text.lower()
+    for pattern in error_patterns:
+        if pattern in lower:
+            return True
+    if len(text.strip()) < 15 and ("error" in lower or "خطا" in lower):
+        return True
+    return False
+
+
+def is_short_summary(summary):
+    """اگر خلاصه کمتر از ۱۵ کلمه یا فقط نام منبع باشد، رد شود"""
+    if not summary:
+        return True
+    words = summary.split()
+    if len(words) < 15:
+        return True
+    # اگر خلاصه فقط یک اسم کوتاه است (مثل «ایسنا» یا «پارس فوتبال»)
+    if len(words) <= 4 and len(summary) < 40:
+        return True
+    return False
+
+
 def is_unwanted(title, translated_title="", translated_summary=""):
     lower_title = title.lower()
     for word in EN_BLACKLIST:
@@ -237,7 +273,7 @@ def calculate_importance(title, translated_title, summary=""):
     return score
 
 
-def is_duplicate_title(new_title, existing_titles, threshold=0.85):
+def is_duplicate_title(new_title, existing_titles, threshold=0.75):
     for old_title in existing_titles:
         similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
         if similarity >= threshold:
@@ -256,6 +292,7 @@ def classify_news(title, summary=""):
         "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو"],
         "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل"],
         "art": ["فیلم", "سریال", "بازیگر", "سینما", "کارگردان", "جشنواره", "تئاتر", "هنرمند"],
+        "satiere": ["طنز", "نقد", "کلیپ", "ویدیو", "ویدئو", "پربازدید", "کمدی", "شصت‌چی", "مدیری", "سکانس", "نمایش خانگی"],
         "other": []
     }
     for cat, keywords in categories.items():
@@ -274,6 +311,7 @@ CATEGORY_EMOJIS = {
     "environment": "🌍",
     "conflict": "⚔️",
     "art": "🎬",
+    "satiere": "🎭",
     "other": "📰",
 }
 
@@ -488,8 +526,10 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 translated_title = line.replace("TITLE:", "").strip()
             elif line.startswith("SUMMARY:"):
                 summary = line.replace("SUMMARY:", "").strip()
-        if not translated_title:
+        if not translated_title or is_error_text(translated_title):
             translated_title = title
+        if is_error_text(summary):
+            summary = ""
         return translated_title, summary
     except Exception as e:
         print(f"{service_name} error: {e}")
@@ -497,23 +537,50 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
+    """Fallback translation with error detection"""
     try:
-        translated_title = translator.translate(title) if title else ""
+        translated_title = ""
+        if title:
+            try:
+                t = translator.translate(title)
+                if t and not is_error_text(t):
+                    translated_title = t
+                else:
+                    translated_title = title
+            except Exception:
+                translated_title = title
+
         summary_clean = clean_html(content)
         if len(summary_clean) > 1000:
             summary_clean = summary_clean[:1000] + "..."
-        translated_summary = translator.translate(summary_clean) if summary_clean else ""
+
+        translated_summary = ""
+        if summary_clean:
+            try:
+                t = translator.translate(summary_clean)
+                if t and not is_error_text(t):
+                    translated_summary = t
+                else:
+                    translated_summary = ""
+            except Exception:
+                translated_summary = ""
+
         return translated_title, translated_summary
     except Exception as e:
         print(f"Fallback error: {e}")
-        return title, content[:200]
+        return title, ""
 
 
 def process_with_ai(title, content):
     for service_name, key in ai_services:
         result = ai_translate_and_summarize(title, content, service_name, key)
         if result:
-            return result
+            t_title, t_summary = result
+            if is_error_text(t_summary):
+                t_summary = ""
+            if not t_title or is_error_text(t_title):
+                t_title = title
+            return t_title, t_summary
     return fallback_translate_and_summarize(title, content)
 
 
@@ -525,6 +592,10 @@ def send_news_item(item):
     category = item.get("category", "other")
     image_url = item.get("image_url", None)
     video_url = item.get("video_url", None)
+
+    # اگر خلاصه خطا بود، خالی بذار
+    if summary and is_error_text(summary):
+        summary = ""
 
     category_emoji = CATEGORY_EMOJIS.get(category, "📰")
     source_hashtag = SOURCE_HASHTAGS.get(source, f"#{source.replace(' ', '_')}")
@@ -584,7 +655,7 @@ def fetch_and_send():
 
         count_from_source = 0
         for entry in feed.entries:
-            if count_from_source >= 5:
+            if count_from_source >= 3:
                 break
 
             try:
@@ -604,6 +675,10 @@ def fetch_and_send():
                 if not translated_title:
                     translated_title = title
 
+                if is_error_text(translated_summary):
+                    print(f"Skipped error summary: {title}")
+                    continue
+
                 # Apply unwanted filter ONLY for foreign sources
                 if source_name not in IRANIAN_SOURCES:
                     if is_unwanted(title, translated_title, translated_summary):
@@ -616,7 +691,7 @@ def fetch_and_send():
 
                 importance_score = calculate_importance(title, translated_title, translated_summary)
                 if importance_score < IMPORTANCE_THRESHOLD:
-                    print(f"Skipped low importance: {title}")
+                    print(f"Skipped low importance ({importance_score}): {title}")
                     continue
 
                 norm_title = normalize_title(translated_title if translated_title else title)
