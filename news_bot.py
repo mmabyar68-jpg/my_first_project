@@ -129,6 +129,10 @@ LOCAL_BLACKLIST = [
 
 IMPORTANCE_THRESHOLD = 6
 
+# ---------- Limits per run ----------
+MAX_POSTS_PER_RUN = 5
+POST_DELAY_SECONDS = 60
+
 SOURCE_HASHTAGS = {
     "CNN": "#سی_ان_ان",
     "BBC": "#بی_بی_سی",
@@ -207,7 +211,6 @@ def normalize_title(title):
 
 
 def is_error_text(text):
-    """تشخیص متن‌های خطا که نباید به‌عنوان خلاصه ارسال شوند"""
     if not text:
         return True
     error_patterns = [
@@ -227,13 +230,11 @@ def is_error_text(text):
 
 
 def is_short_summary(summary):
-    """اگر خلاصه کمتر از ۱۵ کلمه یا فقط نام منبع باشد، رد شود"""
     if not summary:
         return True
     words = summary.split()
     if len(words) < 15:
         return True
-    # اگر خلاصه فقط یک اسم کوتاه است (مثل «ایسنا» یا «پارس فوتبال»)
     if len(words) <= 4 and len(summary) < 40:
         return True
     return False
@@ -537,7 +538,6 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
-    """Fallback translation with error detection"""
     try:
         translated_title = ""
         if title:
@@ -593,7 +593,6 @@ def send_news_item(item):
     image_url = item.get("image_url", None)
     video_url = item.get("video_url", None)
 
-    # اگر خلاصه خطا بود، خالی بذار
     if summary and is_error_text(summary):
         summary = ""
 
@@ -637,7 +636,13 @@ def fetch_and_send():
 
     error_keywords = ["error", "500", "server", "not found", "404"]
 
+    total_sent_this_run = 0
+
     for source_name, feed_url in RSS_FEEDS:
+        if total_sent_this_run >= MAX_POSTS_PER_RUN:
+            print(f"Reached max posts per run ({MAX_POSTS_PER_RUN}). Stopping.")
+            break
+
         print(f"Checking feed: {source_name} - {feed_url}")
         try:
             feed = feedparser.parse(feed_url)
@@ -656,6 +661,8 @@ def fetch_and_send():
         count_from_source = 0
         for entry in feed.entries:
             if count_from_source >= 3:
+                break
+            if total_sent_this_run >= MAX_POSTS_PER_RUN:
                 break
 
             try:
@@ -679,7 +686,6 @@ def fetch_and_send():
                     print(f"Skipped error summary: {title}")
                     continue
 
-                # Apply unwanted filter ONLY for foreign sources
                 if source_name not in IRANIAN_SOURCES:
                     if is_unwanted(title, translated_title, translated_summary):
                         print(f"Skipped unwanted: {title}")
@@ -724,7 +730,10 @@ def fetch_and_send():
                     sent_links.add(link)
                     sent_titles.append(norm_title)
                     count_from_source += 1
-                    time.sleep(1)
+                    total_sent_this_run += 1
+                    if total_sent_this_run < MAX_POSTS_PER_RUN:
+                        print(f"Waiting {POST_DELAY_SECONDS} seconds before next post...")
+                        time.sleep(POST_DELAY_SECONDS)
                 else:
                     print(f"Failed to send: {title}")
             except Exception as e:
@@ -733,7 +742,7 @@ def fetch_and_send():
 
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
-    print("Finished.")
+    print(f"Finished. Total sent this run: {total_sent_this_run}")
 
 
 if __name__ == "__main__":
