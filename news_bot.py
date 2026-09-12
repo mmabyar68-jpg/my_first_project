@@ -40,7 +40,7 @@ IRANIAN_SOURCES = [
 
 # ---------- Feeds ----------
 RSS_FEEDS = [
-    # Foreign sources (art filter applied)
+    # Foreign sources
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
@@ -55,7 +55,7 @@ RSS_FEEDS = [
     ("AP Video", "https://apnews.com/apf-video"),
     ("Euronews Video", "https://www.euronews.com/rss?level=theme&name=news"),
 
-    # Iranian sources (art filter NOT applied)
+    # Iranian sources
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
     ("Fars", "https://www.farsnews.ir/rss"),
@@ -76,6 +76,7 @@ RSS_FEEDS = [
 
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
+SENT_SUMMARIES_FILE = "sent_summaries.txt"
 
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
@@ -125,6 +126,14 @@ LOCAL_BLACKLIST = [
     "استان", "شهرستان", "روستا", "پروژه‌های عمرانی", "عمرانی", "زیرگذر",
     "پل", "جاده", "کلنگ‌زنی", "بهره‌برداری", "افتتاح", "بسیج سازندگی",
     "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
+]
+
+# ---------- Sports keywords ----------
+BIG_SPORTS_WORDS = [
+    "رونالدو", "مسی", "دربی", "الکلاسیکو", "قهرمانی", "فینال",
+    "المپیک", "جام جهانی", "لیگ قهرمانان", "پرسپولیس", "استقلال",
+    "دوناروما", "مرگ", "دستگیری", "شکست سنگین", "پیروزی بزرگ",
+    "رکورد", "مصدومیت شدید", "بازنشستگی", "خداحافظی"
 ]
 
 IMPORTANCE_THRESHOLD = 6
@@ -207,7 +216,7 @@ def clean_html(raw_html):
 def normalize_title(title):
     title = re.sub(r'[^\w\s]', '', title, flags=re.UNICODE)
     title = re.sub(r'\s+', ' ', title).strip().lower()
-    return title[:60]
+    return title[:80]
 
 
 def is_error_text(text):
@@ -259,7 +268,8 @@ def is_local_news(title, translated_title="", translated_summary=""):
     return False
 
 
-def calculate_importance(title, translated_title, summary=""):
+def calculate_importance(title, translated_title, summary="", category="other"):
+    """محاسبه امتیاز اهمیت با تفکیک ورزشی مهم از بی‌ارزش"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
@@ -271,14 +281,43 @@ def calculate_importance(title, translated_title, summary=""):
     for keyword in URGENT_KEYWORDS:
         if keyword in title_text:
             score += 5
+
+    # برای ورزشی‌ها: اگر خبر بزرگ نیست، جریمه‌ی سنگین
+    if category == "sports":
+        is_big_sports = any(w in title_text or w in summary_text for w in BIG_SPORTS_WORDS)
+        if not is_big_sports:
+            score -= 6
+
     return score
 
 
-def is_duplicate_title(new_title, existing_titles, threshold=0.75):
+def is_duplicate_smart(new_title, new_summary, existing_titles, existing_summaries):
+    """تشخیص تکراری با ترکیب عنوان و خلاصه"""
+    new_norm = normalize_title(new_title)
+
+    # 1) چک شباهت عنوان با عناوین قبلی
     for old_title in existing_titles:
-        similarity = difflib.SequenceMatcher(None, new_title, old_title).ratio()
-        if similarity >= threshold:
+        title_sim = difflib.SequenceMatcher(None, new_norm, old_title).ratio()
+        if title_sim >= 0.70:
             return True
+
+        # چک کلمات کلیدی مشترک
+        new_words = set(new_norm.split())
+        old_words = set(old_title.split())
+        common = new_words & old_words
+        if len(common) >= 3 and len(common) / max(len(new_words), 1) >= 0.5:
+            return True
+
+    # 2) چک شباهت خلاصه
+    if new_summary:
+        new_summary_norm = normalize_title(new_summary)[:100]
+        for old_summary in existing_summaries:
+            if not old_summary:
+                continue
+            summary_sim = difflib.SequenceMatcher(None, new_summary_norm, old_summary).ratio()
+            if summary_sim >= 0.75:
+                return True
+
     return False
 
 
@@ -633,6 +672,7 @@ def send_news_item(item):
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
     sent_titles = load_list_from_file(SENT_TITLES_FILE)
+    sent_summaries = load_list_from_file(SENT_SUMMARIES_FILE)
 
     error_keywords = ["error", "500", "server", "not found", "404"]
 
@@ -686,6 +726,11 @@ def fetch_and_send():
                     print(f"Skipped error summary: {title}")
                     continue
 
+                # فیلتر خلاصه‌ی کوتاه یا فقط نام منبع
+                if is_short_summary(translated_summary):
+                    print(f"Skipped short summary: {title}")
+                    continue
+
                 if source_name not in IRANIAN_SOURCES:
                     if is_unwanted(title, translated_title, translated_summary):
                         print(f"Skipped unwanted: {title}")
@@ -695,15 +740,21 @@ def fetch_and_send():
                     print(f"Skipped local: {title}")
                     continue
 
-                importance_score = calculate_importance(title, translated_title, translated_summary)
+                # تعیین دسته‌بندی قبل از محاسبه‌ی اهمیت
+                category = classify_news(title, translated_summary)
+
+                importance_score = calculate_importance(
+                    title, translated_title, translated_summary, category=category
+                )
                 if importance_score < IMPORTANCE_THRESHOLD:
                     print(f"Skipped low importance ({importance_score}): {title}")
                     continue
 
                 norm_title = normalize_title(translated_title if translated_title else title)
 
-                if is_duplicate_title(norm_title, sent_titles):
-                    print(f"Skipped duplicate: {title}")
+                # تشخیص تکراری هوشمند
+                if is_duplicate_smart(norm_title, translated_summary, sent_titles, sent_summaries):
+                    print(f"Skipped duplicate (smart): {title}")
                     continue
 
                 video_url = extract_video_url(entry)
@@ -719,7 +770,7 @@ def fetch_and_send():
                     "summary": translated_summary,
                     "link": link,
                     "source": source_name,
-                    "category": classify_news(title, translated_summary),
+                    "category": category,
                     "image_url": image_url,
                     "video_url": video_url,
                 }
@@ -729,6 +780,7 @@ def fetch_and_send():
                     print(f"Sent: {translated_title}")
                     sent_links.add(link)
                     sent_titles.append(norm_title)
+                    sent_summaries.append(normalize_title(translated_summary)[:100])
                     count_from_source += 1
                     total_sent_this_run += 1
                     if total_sent_this_run < MAX_POSTS_PER_RUN:
@@ -742,6 +794,7 @@ def fetch_and_send():
 
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
+    save_list_to_file(SENT_SUMMARIES_FILE, sent_summaries)
     print(f"Finished. Total sent this run: {total_sent_this_run}")
 
 
