@@ -566,7 +566,7 @@ def send_news_item(item):
     caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
     if summary_escaped:
         caption += f"📝 {summary_escaped}\n\n"
-    caption += f"{source_hashtag}  #Duz_Khabar\n"
+    caption += f"{source_hashtag}  #دوز_خبر\n"
     caption += f"📎 <a href='{link}'>منبع خبر را اینجا ببینید</a>\n"
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
