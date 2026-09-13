@@ -56,7 +56,6 @@ RSS_FEEDS = [
 
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
-SENT_SUMMARIES_FILE = "sent_summaries.txt"
 
 # ---------- کلمات فوری ----------
 URGENT_KEYWORDS = [
@@ -147,7 +146,7 @@ SOURCE_HASHTAGS = {
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
-SLOGAN = "🔔 نبض دنیا؛ اخبار فوری، مستند و قابل اعتماد از خبرگزاری‌های معتبر"
+SLOGAN = "🔔 Duz_Khabar؛ خبر راست و مستند از خبرگزاری‌های معتبر"
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
@@ -567,7 +566,7 @@ def send_news_item(item):
     caption = f"{category_emoji} <b>{title_escaped}</b>\n\n"
     if summary_escaped:
         caption += f"📝 {summary_escaped}\n\n"
-    caption += f"{source_hashtag}  #نبض_دنیا\n"
+    caption += f"{source_hashtag}  #Duz_Khabar\n"
     caption += f"📎 <a href='{link}'>منبع خبر را اینجا ببینید</a>\n"
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
