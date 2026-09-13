@@ -134,7 +134,6 @@ SLOGAN = "🔔 دوز خبر؛ خبر راست و مستند از خبرگزار
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
-# متغیر برای پرش سریع از AI
 ai_failure_count = 0
 AI_FAILURE_LIMIT = 3
 
@@ -478,53 +477,62 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
-    """بدون AI - با مترجم گوگل"""
-    try:
-        translated_title = title
-        if title:
-            try:
-                t = translator.translate(title)
-                if t and not is_error_text(t) and not is_mostly_english(t):
-                    translated_title = t
-            except Exception:
-                pass
+    """بدون AI - با مترجم گوگل. حتی اگه گوگل هم fail بده، عنوان اصلی حفظ می‌شه"""
+    translated_title = title
+    translated_summary = ""
 
-        translated_summary = ""
-        summary_clean = clean_html(content)
-        if summary_clean and len(summary_clean) > 50:
-            try:
-                t = translator.translate(summary_clean[:1000])
-                if t and not is_error_text(t):
-                    translated_summary = t
-            except Exception:
-                pass
-        return translated_title, translated_summary
-    except Exception as e:
-        print(f"Fallback error: {e}")
-        return title, ""
+    # تلاش برای ترجمه‌ی عنوان
+    if title:
+        try:
+            t = translator.translate(title)
+            if t and not is_error_text(t) and not is_mostly_english(t):
+                translated_title = t
+        except Exception as e:
+            print(f"Title translation error: {e}")
+
+    # تلاش برای ترجمه‌ی خلاصه
+    summary_clean = clean_html(content)
+    if summary_clean and len(summary_clean) > 50:
+        try:
+            t = translator.translate(summary_clean[:1000])
+            if t and not is_error_text(t) and not is_mostly_english(t):
+                translated_summary = t
+        except Exception as e:
+            print(f"Summary translation error: {e}")
+
+    # اگه خلاصه خالی موند ولی محتوای اصلی وجود داره، خلاصه‌ی خام بساز
+    if not translated_summary and summary_clean and len(summary_clean) > 30:
+        translated_summary = summary_clean[:300]
+        if not translated_summary.endswith("."):
+            translated_summary += "..."
+
+    return translated_title, translated_summary
 
 
 def process_with_ai(title, content):
+    """سه مقدار برمی‌گردونه: title, summary, used_ai"""
     global ai_failure_count
-    
+
     # اگه تعداد شکست‌های متوالی زیاد بود، مستقیم برو سراغ fallback
     if ai_failure_count >= AI_FAILURE_LIMIT:
-        return fallback_translate_and_summarize(title, content)
-    
+        result = fallback_translate_and_summarize(title, content)
+        return result[0], result[1], False
+
     for service_name, key in ai_services:
         result = ai_translate_and_summarize(title, content, service_name, key)
         if result:
-            ai_failure_count = 0  # ریست
+            ai_failure_count = 0
             t_title, t_summary = result
             if is_error_text(t_summary):
                 t_summary = ""
             if not t_title or is_error_text(t_title):
                 t_title = title
-            return t_title, t_summary
+            return t_title, t_summary, True
         else:
             ai_failure_count += 1
-    
-    return fallback_translate_and_summarize(title, content)
+
+    result = fallback_translate_and_summarize(title, content)
+    return result[0], result[1], False
 
 
 # ---------- ارسال خبر ----------
@@ -609,48 +617,39 @@ def fetch_and_send():
                 # ==========================================
                 # مرحله 1: فیلترهای ارزان (بدون AI)
                 # ==========================================
-                
-                # چک تکراری لینک
+
                 if link in sent_links:
                     print(f"Skipped duplicate link: {title}")
                     continue
 
-                # چک خطای عنوان
                 if any(kw in title.lower() for kw in error_keywords):
                     continue
 
-                # محتوای اصلی
                 raw_content = entry.get("summary", entry.get("description", ""))
                 clean_content = clean_html(raw_content)
-                
-                # فیلتر محتوای خیلی کوتاه
-                if len(clean_content.split()) < 20:
+
+                if len(clean_content.split()) < 8:
                     print(f"Skipped (short content): {title}")
                     continue
 
-                # فیلتر نامطلوب
                 if is_unwanted(title, "", ""):
                     print(f"Skipped unwanted: {title}")
                     continue
 
-                # فیلتر محلی
                 if is_local_news(title, "", ""):
                     print(f"Skipped local: {title}")
                     continue
 
-                # امتیاز اهمیت (روی عنوان اصلی، قبل از ترجمه)
                 importance_score = calculate_importance(title, "", clean_content)
                 if importance_score < IMPORTANCE_THRESHOLD:
                     print(f"Skipped low importance ({importance_score}): {title}")
                     continue
 
-                # تعیین دسته
                 category = classify_news(title, clean_content)
                 if category_counts.get(category, 0) >= CATEGORY_LIMITS.get(category, 3):
                     print(f"Skipped category limit ({category}): {title}")
                     continue
 
-                # چک تکراری عنوان (روی عنوان اصلی)
                 norm_title_orig = normalize_title(title)
                 if is_duplicate_title(norm_title_orig, sent_titles):
                     print(f"Skipped duplicate title: {title}")
@@ -660,21 +659,30 @@ def fetch_and_send():
                 # مرحله 2: فقط حالا خبر رو به AI می‌فرستیم
                 # ==========================================
                 print(f"→ Sending to AI: {title[:60]}...")
-                
-                translated_title, translated_summary = process_with_ai(title, clean_content)
 
-                # فیلترهای بعد از AI
+                translated_title, translated_summary, used_ai = process_with_ai(title, clean_content)
+
+                # فیلتر خطا (همیشه اعمال می‌شه)
                 if is_error_text(translated_title) or is_error_text(translated_summary):
                     print(f"Skipped error text: {title}")
                     continue
 
-                if is_mostly_english(translated_title):
-                    print(f"Skipped untranslated: {title}")
-                    continue
-
-                if is_short_summary(translated_summary):
-                    print(f"Skipped short summary: {title}")
-                    continue
+                # فیلترهای سختگیرانه فقط اگه AI موفق بوده
+                if used_ai:
+                    if is_mostly_english(translated_title):
+                        print(f"Skipped untranslated: {title}")
+                        continue
+                    if is_short_summary(translated_summary):
+                        print(f"Skipped short summary: {title}")
+                        continue
+                else:
+                    # در حالت fallback: سختگیری کمتر
+                    if not translated_summary or is_short_summary(translated_summary):
+                        if clean_content and len(clean_content) > 30:
+                            translated_summary = clean_content[:300]
+                        else:
+                            print(f"Skipped (no summary): {title}")
+                            continue
 
                 # استخراج رسانه
                 video_url = extract_video_url(entry)
