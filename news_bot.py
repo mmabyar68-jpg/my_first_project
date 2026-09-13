@@ -146,7 +146,7 @@ SOURCE_HASHTAGS = {
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
-SLOGAN = "🔔 Duz_Khabar؛ خبر راست و مستند از خبرگزاری‌های معتبر"
+SLOGAN = "🔔 دوز خبر؛ خبر راست و مستند از خبرگزاری‌های معتبر"
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
