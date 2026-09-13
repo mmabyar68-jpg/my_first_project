@@ -11,19 +11,28 @@ import pyshorteners
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+# ---------- سرویس‌های AI ----------
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
+OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 COHERE_API_KEY = os.environ.get("COHERE_API_KEY")
+MISTRAL_API_KEY = os.environ.get("MISTRAL_API_KEY")
 
 if not TELEGRAM_TOKEN or not CHANNEL_ID:
-    raise ValueError("TELEGRAM_TOKEN and CHANNEL_ID must be set as environment variables")
+    raise ValueError("TELEGRAM_TOKEN and CHANNEL_ID must be set")
 
-# ---------- سرویس‌های AI ----------
 ai_services = []
-if OPENAI_API_KEY:
-    ai_services.append(("openai", OPENAI_API_KEY))
+if GROQ_API_KEY:
+    ai_services.append(("groq", GROQ_API_KEY))
+if OPENROUTER_API_KEY:
+    ai_services.append(("openrouter", OPENROUTER_API_KEY))
+if MISTRAL_API_KEY:
+    ai_services.append(("mistral", MISTRAL_API_KEY))
 if DEEPSEEK_API_KEY:
     ai_services.append(("deepseek", DEEPSEEK_API_KEY))
+if OPENAI_API_KEY:
+    ai_services.append(("openai", OPENAI_API_KEY))
 if COHERE_API_KEY:
     ai_services.append(("cohere", COHERE_API_KEY))
 
@@ -32,7 +41,6 @@ if not ai_services:
 
 # ---------- فیدها ----------
 RSS_FEEDS = [
-    # خارجی
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
@@ -43,8 +51,6 @@ RSS_FEEDS = [
     ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
     ("France 24", "https://www.france24.com/en/rss"),
     ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
-
-    # ایرانی
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
     ("Fars", "https://www.farsnews.ir/rss"),
@@ -57,7 +63,6 @@ RSS_FEEDS = [
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
 
-# ---------- کلمات فوری ----------
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
     "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری",
@@ -83,7 +88,6 @@ IMPORTANT_KEYWORDS = [
     "بسته معیشتی", "تعطیلی ادارات"
 ]
 
-# ---------- کلمات نامطلوب ----------
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show",
@@ -95,7 +99,6 @@ FA_BLACKLIST = [
     "سکسی", "پورن", "برهنه", "فحش", "مستهجن"
 ]
 
-# ---------- کلمات محلی/استانی ----------
 LOCAL_BLACKLIST = [
     "استاندار", "فرماندار", "فرمانداری", "شهردار", "شورای شهر", "بخشدار",
     "استان", "شهرستان", "روستا", "پروژه‌های عمرانی", "عمرانی", "زیرگذر",
@@ -103,46 +106,26 @@ LOCAL_BLACKLIST = [
     "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
 ]
 
-# ---------- تنظیمات اهمیت ----------
 IMPORTANCE_THRESHOLD = 6
 
-# ---------- سقف دسته‌بندی ----------
 CATEGORY_LIMITS = {
-    "sports": 1,
-    "art": 1,
-    "satiere": 2,
-    "economy": 4,
-    "politics": 4,
-    "conflict": 5,
-    "technology": 2,
-    "health": 1,
-    "environment": 1,
-    "other": 2,
+    "sports": 1, "art": 1, "satiere": 2, "economy": 4,
+    "politics": 4, "conflict": 5, "technology": 2,
+    "health": 1, "environment": 1, "other": 2,
 }
 
-# ---------- محدودیت هر اجرا ----------
 MAX_POSTS_PER_RUN = 8
 POST_DELAY_SECONDS = 10
 
-# ---------- متغیرها ----------
 SOURCE_HASHTAGS = {
-    "CNN": "#سی_ان_ان",
-    "BBC": "#بی_بی_سی",
-    "Reuters": "#رویترز",
-    "Al Jazeera": "#الجزیره",
-    "RT": "#راشا_تودی",
-    "Tasnim": "#تسنیم",
-    "IRNA": "#ایرنا",
+    "CNN": "#سی_ان_ان", "BBC": "#بی_بی_سی", "Reuters": "#رویترز",
+    "Al Jazeera": "#الجزیره", "RT": "#راشا_تودی",
+    "Tasnim": "#تسنیم", "IRNA": "#ایرنا",
     "Associated Press": "#آسوشیتدپرس",
-    "The Guardian": "#گاردین",
-    "Deutsche Welle": "#دویچه_وله",
-    "France 24": "#فرانس_۲۴",
-    "New York Times": "#نیویورک_تایمز",
-    "Fars": "#فارس",
-    "Mehr": "#مهر",
-    "ISNA": "#ایسنا",
-    "Tabnak": "#تابناک",
-    "Eghtesadonline": "#اقتصادآنلاین",
+    "The Guardian": "#گاردین", "Deutsche Welle": "#دویچه_وله",
+    "France 24": "#فرانس_۲۴", "New York Times": "#نیویورک_تایمز",
+    "Fars": "#فارس", "Mehr": "#مهر", "ISNA": "#ایسنا",
+    "Tabnak": "#تابناک", "Eghtesadonline": "#اقتصادآنلاین",
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
@@ -151,8 +134,11 @@ SLOGAN = "🔔 دوز خبر؛ خبر راست و مستند از خبرگزار
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
 
+# متغیر برای پرش سریع از AI
+ai_failure_count = 0
+AI_FAILURE_LIMIT = 3
 
-# ---------- توابع کمکی ----------
+
 def load_set_from_file(filename):
     if not os.path.exists(filename):
         return set()
@@ -192,7 +178,6 @@ def normalize_title(title):
 
 
 def is_error_text(text):
-    """تشخیص متن‌های خطا"""
     if not text:
         return True
     error_patterns = [
@@ -212,7 +197,6 @@ def is_error_text(text):
 
 
 def is_short_summary(summary):
-    """اگر خلاصه کمتر از ۱۵ کلمه یا فقط نام منبع باشد، رد شود"""
     if not summary:
         return True
     words = summary.split()
@@ -224,7 +208,6 @@ def is_short_summary(summary):
 
 
 def is_mostly_english(text):
-    """اگر بیش از 50% کاراکترهای حرفی متن انگلیسی بود، ترجمه نشده حساب می‌شود"""
     if not text:
         return False
     alpha_chars = [c for c in text if c.isalpha()]
@@ -287,7 +270,7 @@ def classify_news(title, summary=""):
         "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو"],
         "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل"],
         "art": ["فیلم", "سریال", "بازیگر", "سینما", "کارگردان", "جشنواره", "تئاتر", "هنرمند"],
-        "satiere": ["طنز", "نقد", "کلیپ", "ویدیو", "پیدئو", "پربازدید", "کمدی", "شصت‌چی", "مدیری"],
+        "satiere": ["طنز", "نقد", "کلیپ", "ویدیو", "پربازدید", "کمدی", "شصت‌چی", "مدیری"],
         "other": []
     }
     for cat, keywords in categories.items():
@@ -298,16 +281,9 @@ def classify_news(title, summary=""):
 
 
 CATEGORY_EMOJIS = {
-    "politics": "🏛️",
-    "economy": "💰",
-    "sports": "🏆",
-    "technology": "💻",
-    "health": "🏥",
-    "environment": "🌍",
-    "conflict": "⚔️",
-    "art": "🎬",
-    "satiere": "🎭",
-    "other": "📰",
+    "politics": "🏛️", "economy": "💰", "sports": "🏆",
+    "technology": "💻", "health": "🏥", "environment": "🌍",
+    "conflict": "⚔️", "art": "🎬", "satiere": "🎭", "other": "📰",
 }
 
 
@@ -326,11 +302,7 @@ def extract_image_url(entry):
             if enc.get('type', '').startswith('image'):
                 return enc.get('url', '')
     summary = entry.get('summary', entry.get('description', ''))
-    img_patterns = [
-        r'<img[^>]+src=["\'](.*?)["\']',
-        r'<img[^>]+data-src=["\'](.*?)["\']',
-    ]
-    for pattern in img_patterns:
+    for pattern in [r'<img[^>]+src=["\'](.*?)["\']', r'<img[^>]+data-src=["\'](.*?)["\']']:
         match = re.search(pattern, summary)
         if match:
             return match.group(1)
@@ -355,15 +327,12 @@ def extract_video_url(entry):
             type_attr = enc.get('type', '').lower()
             if url and ('video' in type_attr or 'mpeg' in type_attr):
                 return url
-            if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
-                return url
     summary = entry.get('summary', entry.get('description', ''))
-    patterns = [
+    for pattern in [
         r'<video[^>]+src=["\'](.*?)["\']',
         r'<source[^>]+src=["\'](.*?)["\']',
         r'https?://[^\s"\']+\.(?:mp4|m3u8|webm|mov)(?:\?[^\s"\']*)?',
-    ]
-    for pattern in patterns:
+    ]:
         match = re.search(pattern, summary, re.IGNORECASE)
         if match:
             return match.group(1) if match.groups() else match.group(0)
@@ -376,15 +345,10 @@ def escape_html(text):
 
 def send_telegram_message(text):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "text": text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": False,
-    }
+    payload = {"chat_id": CHANNEL_ID, "text": text, "parse_mode": "HTML", "disable_web_page_preview": False}
     try:
-        response = requests.post(api_url, json=payload, timeout=15)
-        response.raise_for_status()
+        r = requests.post(api_url, json=payload, timeout=15)
+        r.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending message: {e}")
@@ -393,15 +357,10 @@ def send_telegram_message(text):
 
 def send_telegram_photo(photo_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "photo": photo_url,
-        "caption": caption,
-        "parse_mode": "HTML",
-    }
+    payload = {"chat_id": CHANNEL_ID, "photo": photo_url, "caption": caption, "parse_mode": "HTML"}
     try:
-        response = requests.post(api_url, json=payload, timeout=20)
-        response.raise_for_status()
+        r = requests.post(api_url, json=payload, timeout=20)
+        r.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending photo: {e}")
@@ -410,16 +369,10 @@ def send_telegram_photo(photo_url, caption):
 
 def send_telegram_video(video_url, caption):
     api_url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
-    payload = {
-        "chat_id": CHANNEL_ID,
-        "video": video_url,
-        "caption": caption,
-        "parse_mode": "HTML",
-        "supports_streaming": True,
-    }
+    payload = {"chat_id": CHANNEL_ID, "video": video_url, "caption": caption, "parse_mode": "HTML", "supports_streaming": True}
     try:
-        response = requests.post(api_url, json=payload, timeout=30)
-        response.raise_for_status()
+        r = requests.post(api_url, json=payload, timeout=30)
+        r.raise_for_status()
         return True
     except Exception as e:
         print(f"Error sending video: {e}")
@@ -429,29 +382,51 @@ def send_telegram_video(video_url, caption):
 # ---------- توابع AI ----------
 def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = (
-        "You are an expert news summarizer and translator. "
-        "Given a news title and content, translate to Persian if needed and write a detailed summary "
-        "(4 to 5 sentences) that includes all numbers, prices, dates, and names.\n\n"
-        "IMPORTANT RULES:\n"
-        "- Use professional, formal Persian.\n"
-        "- Never use vulgar, offensive, or inappropriate words.\n"
-        "- Translate English terms to fluent Persian. Do NOT leave English words.\n"
-        "- Do not use vague phrases. If a detail is missing, add: 'جزئیات بیشتر اعلام نشده است'.\n\n"
-        "Output format:\nTITLE: <translated title in Persian>\nSUMMARY: <summary in Persian>\n\n"
+        "You are an expert Persian news editor. Translate to Persian and write a 4-5 sentence summary.\n\n"
+        "RULES:\n"
+        "- Use formal Persian only. No English words.\n"
+        "- Include ALL numbers, prices, dates, names.\n"
+        "- Answer the question in the title directly.\n"
+        "- Never use vague phrases. State facts directly.\n"
+        "- If content is too short, write: 'جزئیات بیشتر اعلام نشده است'\n\n"
+        "Output format:\nTITLE: <Persian title>\nSUMMARY: <Persian summary>\n\n"
         f"Title: {title}\nContent: {content[:2500]}\n"
     )
     try:
-        if service_name == "openai":
+        if service_name == "groq":
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             payload = {
-                "model": "gpt-3.5-turbo",
+                "model": "llama-3.3-70b-versatile",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+                "max_tokens": 500,
+            }
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            if r.status_code != 200:
+                raise Exception(f"Groq error: {r.status_code}")
+            text = r.json()["choices"][0]["message"]["content"]
+        elif service_name == "openrouter":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "meta-llama/llama-3.1-8b-instruct:free",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            resp = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
-            if resp.status_code != 200:
-                raise Exception(f"OpenAI API error: {resp.status_code}")
-            text = resp.json()["choices"][0]["message"]["content"]
+            r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            if r.status_code != 200:
+                raise Exception(f"OpenRouter error: {r.status_code}")
+            text = r.json()["choices"][0]["message"]["content"]
+        elif service_name == "mistral":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "mistral-small-latest",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.3,
+            }
+            r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            if r.status_code != 200:
+                raise Exception(f"Mistral error: {r.status_code}")
+            text = r.json()["choices"][0]["message"]["content"]
         elif service_name == "deepseek":
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             payload = {
@@ -459,25 +434,28 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            resp = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=20)
-            if resp.status_code != 200:
-                raise Exception(f"DeepSeek API error: {resp.status_code}")
-            text = resp.json()["choices"][0]["message"]["content"]
-        elif service_name == "cohere":
-            headers = {
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-            }
+            r = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            if r.status_code != 200:
+                raise Exception(f"DeepSeek error: {r.status_code}")
+            text = r.json()["choices"][0]["message"]["content"]
+        elif service_name == "openai":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             payload = {
-                "model": "command-r",
-                "message": prompt,
+                "model": "gpt-3.5-turbo",
+                "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            resp = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=20)
-            if resp.status_code != 200:
-                raise Exception(f"Cohere API error: {resp.status_code}")
-            text = resp.json()["text"]
+            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            if r.status_code != 200:
+                raise Exception(f"OpenAI error: {r.status_code}")
+            text = r.json()["choices"][0]["message"]["content"]
+        elif service_name == "cohere":
+            headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+            payload = {"model": "command-r", "message": prompt, "temperature": 0.3}
+            r = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=8)
+            if r.status_code != 200:
+                raise Exception(f"Cohere error: {r.status_code}")
+            text = r.json()["text"]
         else:
             return None
 
@@ -500,31 +478,26 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
+    """بدون AI - با مترجم گوگل"""
     try:
-        translated_title = ""
+        translated_title = title
         if title:
             try:
                 t = translator.translate(title)
-                if t and not is_error_text(t):
+                if t and not is_error_text(t) and not is_mostly_english(t):
                     translated_title = t
-                else:
-                    translated_title = title
             except Exception:
-                translated_title = title
-
-        summary_clean = clean_html(content)
-        if len(summary_clean) > 1000:
-            summary_clean = summary_clean[:1000] + "..."
+                pass
 
         translated_summary = ""
-        if summary_clean:
+        summary_clean = clean_html(content)
+        if summary_clean and len(summary_clean) > 50:
             try:
-                t = translator.translate(summary_clean)
+                t = translator.translate(summary_clean[:1000])
                 if t and not is_error_text(t):
                     translated_summary = t
             except Exception:
-                translated_summary = ""
-
+                pass
         return translated_title, translated_summary
     except Exception as e:
         print(f"Fallback error: {e}")
@@ -532,15 +505,25 @@ def fallback_translate_and_summarize(title, content):
 
 
 def process_with_ai(title, content):
+    global ai_failure_count
+    
+    # اگه تعداد شکست‌های متوالی زیاد بود، مستقیم برو سراغ fallback
+    if ai_failure_count >= AI_FAILURE_LIMIT:
+        return fallback_translate_and_summarize(title, content)
+    
     for service_name, key in ai_services:
         result = ai_translate_and_summarize(title, content, service_name, key)
         if result:
+            ai_failure_count = 0  # ریست
             t_title, t_summary = result
             if is_error_text(t_summary):
                 t_summary = ""
             if not t_title or is_error_text(t_title):
                 t_title = title
             return t_title, t_summary
+        else:
+            ai_failure_count += 1
+    
     return fallback_translate_and_summarize(title, content)
 
 
@@ -601,28 +584,19 @@ def fetch_and_send():
 
     for source_name, feed_url in RSS_FEEDS:
         if total_sent_this_run >= MAX_POSTS_PER_RUN:
-            print(f"Reached max posts per run ({MAX_POSTS_PER_RUN}). Stopping.")
             break
 
-        print(f"Checking feed: {source_name} - {feed_url}")
+        print(f"Checking feed: {source_name}")
         try:
             feed = feedparser.parse(feed_url)
         except Exception as e:
             print(f"Feed parse error for {source_name}: {e}")
             continue
 
-        if feed.bozo:
-            print(f"Feed {source_name} has bozo error, skipping.")
+        if feed.bozo or not feed.entries:
             continue
 
-        if not feed.entries:
-            print(f"Feed {source_name} returned no entries.")
-            continue
-
-        count_from_source = 0
         for entry in feed.entries:
-            if count_from_source >= 3:
-                break
             if total_sent_this_run >= MAX_POSTS_PER_RUN:
                 break
 
@@ -632,65 +606,77 @@ def fetch_and_send():
                 if not link or not title:
                     continue
 
-                # 1) چک تکراری با لینک (قطعی‌ترین روش)
+                # ==========================================
+                # مرحله 1: فیلترهای ارزان (بدون AI)
+                # ==========================================
+                
+                # چک تکراری لینک
                 if link in sent_links:
                     print(f"Skipped duplicate link: {title}")
                     continue
 
-                if any(keyword in title.lower() for keyword in error_keywords):
-                    print(f"Skipped error-like title: {title}")
+                # چک خطای عنوان
+                if any(kw in title.lower() for kw in error_keywords):
                     continue
 
-                translated_title, translated_summary = process_with_ai(
-                    title,
-                    entry.get("summary", entry.get("description", ""))
-                )
-                if not translated_title:
-                    translated_title = title
-
-                # 2) فیلتر خطا
-                if is_error_text(translated_title) or is_error_text(translated_summary):
-                    print(f"Skipped error text: {title}")
+                # محتوای اصلی
+                raw_content = entry.get("summary", entry.get("description", ""))
+                clean_content = clean_html(raw_content)
+                
+                # فیلتر محتوای خیلی کوتاه
+                if len(clean_content.split()) < 20:
+                    print(f"Skipped (short content): {title}")
                     continue
 
-                # 3) فیلتر عنوان ترجمه‌نشده
-                if is_mostly_english(translated_title):
-                    print(f"Skipped untranslated title: {title}")
-                    continue
-
-                # 4) فیلتر خلاصه‌ی کوتاه
-                if is_short_summary(translated_summary):
-                    print(f"Skipped short summary: {title}")
-                    continue
-
-                # 5) فیلتر نامطلوب
-                if is_unwanted(title, translated_title, translated_summary):
+                # فیلتر نامطلوب
+                if is_unwanted(title, "", ""):
                     print(f"Skipped unwanted: {title}")
                     continue
 
-                # 6) فیلتر محلی
-                if is_local_news(title, translated_title, translated_summary):
+                # فیلتر محلی
+                if is_local_news(title, "", ""):
                     print(f"Skipped local: {title}")
                     continue
 
-                # 7) امتیاز اهمیت
-                importance_score = calculate_importance(title, translated_title, translated_summary)
+                # امتیاز اهمیت (روی عنوان اصلی، قبل از ترجمه)
+                importance_score = calculate_importance(title, "", clean_content)
                 if importance_score < IMPORTANCE_THRESHOLD:
                     print(f"Skipped low importance ({importance_score}): {title}")
                     continue
 
-                # 8) تعیین دسته و چک سقف
-                category = classify_news(title, translated_summary)
+                # تعیین دسته
+                category = classify_news(title, clean_content)
                 if category_counts.get(category, 0) >= CATEGORY_LIMITS.get(category, 3):
                     print(f"Skipped category limit ({category}): {title}")
                     continue
 
-                # 9) چک تکراری با عنوان
-                norm_title = normalize_title(translated_title if translated_title else title)
-                if is_duplicate_title(norm_title, sent_titles):
+                # چک تکراری عنوان (روی عنوان اصلی)
+                norm_title_orig = normalize_title(title)
+                if is_duplicate_title(norm_title_orig, sent_titles):
                     print(f"Skipped duplicate title: {title}")
                     continue
 
+                # ==========================================
+                # مرحله 2: فقط حالا خبر رو به AI می‌فرستیم
+                # ==========================================
+                print(f"→ Sending to AI: {title[:60]}...")
+                
+                translated_title, translated_summary = process_with_ai(title, clean_content)
+
+                # فیلترهای بعد از AI
+                if is_error_text(translated_title) or is_error_text(translated_summary):
+                    print(f"Skipped error text: {title}")
+                    continue
+
+                if is_mostly_english(translated_title):
+                    print(f"Skipped untranslated: {title}")
+                    continue
+
+                if is_short_summary(translated_summary):
+                    print(f"Skipped short summary: {title}")
+                    continue
+
+                # استخراج رسانه
                 video_url = extract_video_url(entry)
                 image_url = extract_image_url(entry)
 
@@ -706,21 +692,20 @@ def fetch_and_send():
 
                 success = send_news_item(news_item)
                 if success:
-                    print(f"Sent: {translated_title}")
+                    print(f"✓ Sent: {translated_title[:50]}")
                     sent_links.add(link)
-                    sent_titles.append(norm_title)
-                    count_from_source += 1
+                    sent_titles.append(normalize_title(translated_title))
                     total_sent_this_run += 1
                     category_counts[category] = category_counts.get(category, 0) + 1
                     if total_sent_this_run < MAX_POSTS_PER_RUN:
                         time.sleep(POST_DELAY_SECONDS)
                 else:
-                    print(f"Failed to send: {title}")
+                    print(f"✗ Failed: {title}")
+
             except Exception as e:
                 print(f"Error processing entry: {e}")
                 continue
 
-    # ذخیره‌سازی
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
     print(f"Finished. Total sent this run: {total_sent_this_run}")
