@@ -4,9 +4,9 @@ import os
 import time
 import re
 import difflib
+import html as html_module
 from deep_translator import GoogleTranslator
 import pyshorteners
-from bs4 import BeautifulSoup
 
 # ---------- تنظیمات ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
@@ -39,12 +39,12 @@ if COHERE_API_KEY:
 if not ai_services:
     print("No AI API keys found, falling back to deep-translator.")
 
-# ---------- فیدها ----------
-FOREIGN_SOURCES = [
-    "CNN", "BBC", "Reuters", "Al Jazeera", "RT", "Associated Press",
-    "The Guardian", "Deutsche Welle", "France 24", "New York Times"
+# ---------- منابع ایرانی ----------
+IRANIAN_SOURCES = [
+    "Tasnim", "IRNA", "Fars", "Mehr", "ISNA", "Tabnak", "Eghtesadonline"
 ]
 
+# ---------- فیدها ----------
 RSS_FEEDS = [
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
@@ -68,34 +68,18 @@ RSS_FEEDS = [
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
 
-# ---------- کلمات مهم انگلیسی (برای منابع خارجی) ----------
-EN_URGENT_KEYWORDS = [
-    "war", "attack", "explosion", "earthquake", "flood", "fire",
-    "sanctions", "missile", "nuclear", "killed", "assassination",
-    "coup", "fighter jet", "emergency", "breaking", "urgent",
-    "invasion", "strike", "bomb", "crisis", "collapse", "shooting"
-]
-
-EN_IMPORTANT_KEYWORDS = [
-    "war", "attack", "explosion", "economy", "inflation", "oil",
-    "price", "dollar", "gold", "stock", "election", "president",
-    "government", "parliament", "law", "crisis", "virus", "vaccine",
-    "peace", "negotiation", "agreement", "missile", "nuclear",
-    "america", "iran", "china", "russia", "ukraine", "palestine",
-    "israel", "iraq", "afghanistan", "pakistan", "india", "turkey",
-    "europe", "britain", "france", "germany", "refugee", "migration",
-    "health", "education", "technology", "artificial intelligence",
-    "internet", "space", "environment", "climate change", "crime",
-    "court", "police", "army", "gaza", "lebanon", "yemen", "syria",
-    "saudi", "emirates", "kurdistan", "hostage", "protest"
-]
-
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
     "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری",
     "سکه", "ارز", "بانک مرکزی",
     "تعطیلی مدارس", "تعطیلی ادارات", "کالابرگ", "یارانه", "سهام عدالت",
     "وام", "کمک معیشتی", "بسته معیشتی"
+]
+
+URGENT_KEYWORDS_EN = [
+    "war", "attack", "explosion", "earthquake", "flood", "fire",
+    "emergency", "breaking", "urgent", "killed", "dead", "died",
+    "missile", "strike", "invasion", "bombing", "assassination"
 ]
 
 IMPORTANT_KEYWORDS = [
@@ -115,6 +99,19 @@ IMPORTANT_KEYWORDS = [
     "بسته معیشتی", "تعطیلی ادارات"
 ]
 
+IMPORTANT_KEYWORDS_EN = [
+    "war", "attack", "explosion", "earthquake", "flood", "fire",
+    "sanction", "missile", "nuclear", "kill", "assassination", "terror",
+    "economy", "inflation", "oil", "price", "dollar", "gold", "stock",
+    "election", "president", "government", "parliament", "law", "minister",
+    "crisis", "virus", "vaccine", "peace", "negotiation", "deal", "agreement",
+    "america", "iran", "china", "russia", "ukraine", "israel", "trump",
+    "palestine", "iraq", "afghanistan", "europe", "germany", "france",
+    "britain", "japan", "india", "turkey", "egypt", "saudi", "nato", "un",
+    "brics", "gaza", "lebanon", "syria", "yemen", "hormuz", "putin",
+    "netanyahu", "zelensky", "khamenei"
+]
+
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show",
@@ -130,17 +127,15 @@ LOCAL_BLACKLIST = [
     "استاندار", "فرماندار", "فرمانداری", "شهردار", "شورای شهر", "بخشدار",
     "استان", "شهرستان", "روستا", "پروژه‌های عمرانی", "عمرانی", "زیرگذر",
     "پل", "جاده", "کلنگ‌زنی", "بهره‌برداری", "افتتاح", "بسیج سازندگی",
-    "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی",
-    "شهرداری", "مدیرکل", "معاونت", "معاون", "رئیس سازمان", "رئیس اداره",
-    "آبدانان", "جاسک", "دماوند", "قشم", "بندر", "نردبان"
+    "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
 ]
 
 IMPORTANCE_THRESHOLD = 6
 
 CATEGORY_LIMITS = {
-    "sports": 1, "art": 2, "satiere": 3, "economy": 4,
+    "sports": 1, "art": 1, "satiere": 2, "economy": 4,
     "politics": 4, "conflict": 5, "technology": 2,
-    "health": 2, "environment": 2, "other": 3,
+    "health": 1, "environment": 1, "other": 2,
 }
 
 MAX_POSTS_PER_RUN = 8
@@ -194,8 +189,14 @@ def save_list_to_file(filename, data_list):
 
 
 def clean_html(raw_html):
+    """حذف تگ‌های HTML و decode کردن entity ها"""
+    if not raw_html:
+        return ""
+    # حذف تگ‌ها
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
+    # decode کردن entity ها (&#039; → ')
+    cleantext = html_module.unescape(cleantext)
     return cleantext.strip()
 
 
@@ -264,37 +265,8 @@ def is_local_news(title, translated_title="", translated_summary=""):
     return False
 
 
-def has_local_category(entry):
-    """چک می‌کنه اگه خبر تگ استانی/محلی داره"""
-    if 'tags' not in entry:
-        return False
-
-    local_tags = [
-        "استانی", "شهری", "محلی", "منطقه‌ای", "استان‌ها",
-        "کرمان", "یزد", "اصفهان", "شیراز", "مشهد", "تبریز",
-        "رشت", "اهواز", "قم", "کرج", "ارومیه", "زاهدان",
-        "بوشهر", "سنندج", "اراک", "گرگان", "قزوین", "زنجان",
-        "سمنان", "بجنورد", "بیرجند", "یاسوج", "خرم‌آباد",
-        "اردبیل", "قشم", "کیش", "جاسک", "چابهار", "بندرعباس",
-        "لامرد", "سراوان", "خوی", "چناران", "لرستان", "کردستان",
-        "هرمزگان", "گلستان", "گیلان", "مازندران", "مرکزی",
-        "همدان", "کرمانشاه", "ایلام", "البرز"
-    ]
-
-    for tag in entry.tags:
-        term = tag.get('term', '').strip()
-        if not term:
-            continue
-        if term in local_tags:
-            return True
-        for lt in local_tags:
-            if lt in term:
-                return True
-    return False
-
-
-def calculate_importance(title, translated_title, summary="", is_foreign=False):
-    """محاسبه امتیاز اهمیت - برای منابع خارجی کلمات انگلیسی هم چک می‌شن"""
+def calculate_importance(title, translated_title, summary="", source=""):
+    """محاسبه امتیاز با پشتیبانی از کلمات انگلیسی"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
@@ -305,18 +277,20 @@ def calculate_importance(title, translated_title, summary="", is_foreign=False):
             score += 3
         elif keyword in summary_text:
             score += 1
+
     for keyword in URGENT_KEYWORDS:
         if keyword in title_text:
             score += 5
 
-    # برای منابع خارجی: کلمات انگلیسی هم چک بشن
-    if is_foreign:
-        for keyword in EN_IMPORTANT_KEYWORDS:
+    # کلمات انگلیسی (فقط برای منابع خارجی)
+    if source not in IRANIAN_SOURCES:
+        for keyword in IMPORTANT_KEYWORDS_EN:
             if keyword in title_text:
                 score += 3
             elif keyword in summary_text:
                 score += 1
-        for keyword in EN_URGENT_KEYWORDS:
+
+        for keyword in URGENT_KEYWORDS_EN:
             if keyword in title_text:
                 score += 5
 
@@ -331,26 +305,55 @@ def is_duplicate_title(new_title, existing_titles, threshold=0.85):
     return False
 
 
+def is_duplicate_keywords(new_title, existing_titles, min_common=3):
+    """تشخیص تکراری بر اساس کلمات کلیدی مشترک"""
+    stop_words = {
+        "از", "به", "در", "با", "را", "که", "این", "آن", "یک", "دو", "بر",
+        "برای", "شده", "کرد", "است", "هست", "بود", "شد", "می", "های", "ها",
+        "دیگر", "بار", "طی", "پس", "قبل", "روی", "بین", "هم", "یا", "و",
+        "اگر", "نیز", "خود", "همه", "هر", "چند", "بیش", "کم", "چه", "چی",
+        "the", "and", "for", "with", "from", "that", "this", "have", "has",
+        "was", "were", "are", "is", "will", "would", "could", "should"
+    }
+
+    def get_keywords(text):
+        words = normalize_title(text).split()
+        return set(w for w in words if len(w) > 3 and w not in stop_words)
+
+    new_words = get_keywords(new_title)
+    if len(new_words) < 3:
+        return False
+
+    for old_title in existing_titles:
+        old_words = get_keywords(old_title)
+        common = new_words & old_words
+        if len(common) >= min_common:
+            if len(common) / max(len(new_words), 1) >= 0.5:
+                return True
+    return False
+
+
 def classify_news(title, summary=""):
     text = (title + " " + summary).lower()
     categories = {
         "conflict": ["جنگ", "حمله", "درگیری", "موشک", "انفجار", "ارتش", "نظامی", "تهاجم",
-                     "war", "attack", "missile", "explosion", "military"],
+                     "war", "attack", "strike", "conflict", "military"],
         "economy": ["اقتصاد", "تورم", "نفت", "دلار", "بورس", "قیمت", "تجارت", "سهام", "بودجه",
                     "economy", "inflation", "oil", "price", "dollar", "stock"],
         "politics": ["انتخابات", "رئیس‌جمهور", "دولت", "مجلس", "سیاست", "قانون", "تحریم", "مذاکره",
-                     "election", "president", "government", "sanction", "negotiation"],
+                     "election", "president", "government", "parliament", "politics"],
         "sports": ["ورزش", "فوتبال", "بسکتبال", "المپیک", "لیگ", "جام",
-                   "sport", "football", "olympic", "league"],
+                   "sport", "football", "basketball", "olympic"],
         "technology": ["فناوری", "هوش مصنوعی", "اینترنت", "ربات", "نرم‌افزار", "استارتاپ", "دیجیتال",
-                       "technology", "AI", "internet", "robot", "software"],
+                       "technology", "ai", "artificial intelligence", "internet"],
         "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو",
                    "health", "virus", "vaccine", "hospital"],
         "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل",
-                        "environment", "climate", "pollution", "forest"],
+                        "environment", "climate", "pollution"],
         "art": ["فیلم", "سریال", "بازیگر", "سینما", "کارگردان", "جشنواره", "تئاتر", "هنرمند",
-                "movie", "film", "actor", "cinema", "festival"],
-        "satiere": ["طنز", "نقد", "کلیپ", "ویدیو", "پربازدید", "کمدی", "شصت‌چی", "مدیری"],
+                "film", "movie", "actor", "cinema"],
+        "satiere": ["طنز", "نقد", "کلیپ", "ویدیو", "پربازدید", "کمدی", "شصت‌چی", "مدیری",
+                    "video", "clip", "viral"],
         "other": []
     }
     for cat, keywords in categories.items():
@@ -403,12 +406,6 @@ def extract_video_url(entry):
             if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
                 return url
 
-    if 'media_player' in entry:
-        for player in entry.media_player:
-            url = player.get('url', '')
-            if url:
-                return url
-
     if 'enclosures' in entry:
         for enc in entry.enclosures:
             url = enc.get('url', '')
@@ -420,25 +417,24 @@ def extract_video_url(entry):
 
     summary = entry.get('summary', entry.get('description', ''))
 
-    aparat_match = re.search(r'(?:aparat\.com/v/|aparat\.com/embed/v/)([a-zA-Z0-9]+)', summary)
-    if aparat_match:
-        return f"APARAT:{aparat_match.group(1)}"
+    # آپارات در summary
+    ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', summary)
+    if ap_match:
+        return f"APARAT:{ap_match.group(1)}"
 
-    youtube_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', summary)
-    if youtube_match:
-        return f"YOUTUBE:{youtube_match.group(1)}"
+    # یوتیوب در summary
+    yt_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', summary)
+    if yt_match:
+        return f"YOUTUBE:{yt_match.group(1)}"
 
     for pattern in [
         r'<video[^>]+src=["\'](.*?)["\']',
         r'<source[^>]+src=["\'](.*?)["\']',
+        r'https?://[^\s"\']+\.(?:mp4|m3u8|webm|mov)(?:\?[^\s"\']*)?',
     ]:
         match = re.search(pattern, summary, re.IGNORECASE)
         if match:
-            return match.group(1)
-
-    match = re.search(r'https?://[^\s"\']+\.(?:mp4|m3u8|webm)(?:\?[^\s"\']*)?', summary)
-    if match:
-        return match.group(0)
+            return match.group(1) if match.groups() else match.group(0)
 
     return None
 
@@ -446,12 +442,11 @@ def extract_video_url(entry):
 def get_aparat_mp4(video_hash):
     """دریافت لینک mp4 مستقیم از آپارات"""
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         api_url = f"https://www.aparat.com/etc/api/video/videohash/{video_hash}"
-        api_resp = requests.get(api_url, timeout=8, headers=headers)
-        if api_resp.status_code == 200:
-            data = api_resp.json()
-            video = data.get("video", {})
+        r = requests.get(api_url, timeout=8, headers=headers)
+        if r.status_code == 200:
+            video = r.json().get("video", {})
             file_url = video.get("file_url")
             if file_url:
                 return file_url
@@ -464,58 +459,30 @@ def get_aparat_mp4(video_hash):
 def fetch_video_from_page(url):
     """استخراج ویدیو از صفحه‌ی خبر"""
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
-        resp = requests.get(url, timeout=10, headers=headers)
-        if resp.status_code != 200:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        r = requests.get(url, timeout=10, headers=headers)
+        if r.status_code != 200:
             return None
 
-        html = resp.text
+        html = r.text
 
-        aparat_match = re.search(r'(?:aparat\.com/v/|aparat\.com/embed/v/)([a-zA-Z0-9]+)', html)
-        if aparat_match:
-            video_hash = aparat_match.group(1)
-            print(f"  Found Aparat hash: {video_hash}")
+        # آپارات
+        ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', html)
+        if ap_match:
+            video_hash = ap_match.group(1)
+            print(f"  → Found Aparat: {video_hash}")
             mp4 = get_aparat_mp4(video_hash)
             if mp4:
                 return mp4
             return f"APARAT:{video_hash}"
 
-        youtube_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', html)
-        if youtube_match:
-            return f"YOUTUBE:{youtube_match.group(1)}"
+        # یوتیوب
+        yt_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', html)
+        if yt_match:
+            return f"YOUTUBE:{yt_match.group(1)}"
 
-        soup = BeautifulSoup(html, 'html.parser')
-
-        for video in soup.find_all('video'):
-            src = video.get('src')
-            if src and src.startswith('http'):
-                return src
-            for source in video.find_all('source'):
-                src = source.get('src')
-                if src and src.startswith('http'):
-                    return src
-
-        for iframe in soup.find_all('iframe'):
-            src = iframe.get('src', '')
-            if not src:
-                continue
-            ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', src)
-            if ap_match:
-                return f"APARAT:{ap_match.group(1)}"
-            yt_match = re.search(r'youtube\.com/embed/([a-zA-Z0-9_-]+)', src)
-            if yt_match:
-                return f"YOUTUBE:{yt_match.group(1)}"
-            if '.mp4' in src:
-                return src
-
-        for meta in soup.find_all('meta'):
-            prop = meta.get('property', '') or meta.get('name', '')
-            if prop in ('og:video', 'og:video:url', 'og:video:secure_url', 'twitter:player:stream'):
-                content = meta.get('content', '')
-                if content and content.startswith('http'):
-                    return content
-
-        mp4_match = re.search(r'https?://[^\s"\'<>]+\.(?:mp4|m3u8)(?:\?[^\s"\'<>]*)?', html)
+        # mp4 مستقیم در HTML
+        mp4_match = re.search(r'https?://[^\s"\'<>]+\.mp4(?:\?[^\s"\'<>]*)?', html)
         if mp4_match:
             return mp4_match.group(0)
 
@@ -566,25 +533,26 @@ def send_telegram_video(video_url, caption):
 
 
 def send_video_from_link(video_url, caption):
-    """ارسال ویدیو به تلگرام - هندل کردن آپارات و یوتیوب"""
+    """ارسال ویدیو - هندل کردن آپارات و یوتیوب"""
+    # آپارات
     if video_url.startswith("APARAT:"):
         video_hash = video_url.replace("APARAT:", "")
         mp4 = get_aparat_mp4(video_hash)
         if mp4:
-            success = send_telegram_video(mp4, caption)
-            if success:
+            if send_telegram_video(mp4, caption):
                 return True
         caption += f"\n\n🎬 <a href='https://www.aparat.com/v/{video_hash}'>تماشا در آپارات</a>"
         return send_telegram_message(caption)
 
+    # یوتیوب
     if video_url.startswith("YOUTUBE:"):
         video_id = video_url.replace("YOUTUBE:", "")
         caption += f"\n\n🎬 <a href='https://youtu.be/{video_id}'>تماشا در یوتیوب</a>"
         return send_telegram_message(caption)
 
+    # mp4 مستقیم
     if video_url.startswith("http"):
-        success = send_telegram_video(video_url, caption)
-        if success:
+        if send_telegram_video(video_url, caption):
             return True
         caption += f"\n\n🎬 <a href='{video_url}'>تماشای ویدیو</a>"
         return send_telegram_message(caption)
@@ -597,7 +565,7 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
     prompt = (
         "You are an expert Persian news editor. Translate to Persian and write a 4-5 sentence summary.\n\n"
         "RULES:\n"
-        "- Use formal Persian only. No English words.\n"
+        "- Use formal Persian only. No English words. Translate EVERYTHING to Persian.\n"
         "- Include ALL numbers, prices, dates, names.\n"
         "- Answer the question in the title directly.\n"
         "- Never use vague phrases. State facts directly.\n"
@@ -614,7 +582,7 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 "temperature": 0.3,
                 "max_tokens": 500,
             }
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", headers=headers, json=payload, timeout=10)
             if r.status_code != 200:
                 raise Exception(f"Groq error: {r.status_code}")
             text = r.json()["choices"][0]["message"]["content"]
@@ -625,7 +593,7 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            r = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=payload, timeout=10)
             if r.status_code != 200:
                 raise Exception(f"OpenRouter error: {r.status_code}")
             text = r.json()["choices"][0]["message"]["content"]
@@ -636,7 +604,7 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            r = requests.post("https://api.mistral.ai/v1/chat/completions", headers=headers, json=payload, timeout=10)
             if r.status_code != 200:
                 raise Exception(f"Mistral error: {r.status_code}")
             text = r.json()["choices"][0]["message"]["content"]
@@ -647,7 +615,7 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            r = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            r = requests.post("https://api.deepseek.com/v1/chat/completions", headers=headers, json=payload, timeout=10)
             if r.status_code != 200:
                 raise Exception(f"DeepSeek error: {r.status_code}")
             text = r.json()["choices"][0]["message"]["content"]
@@ -658,14 +626,14 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
             }
-            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=8)
+            r = requests.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload, timeout=10)
             if r.status_code != 200:
                 raise Exception(f"OpenAI error: {r.status_code}")
             text = r.json()["choices"][0]["message"]["content"]
         elif service_name == "cohere":
             headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
             payload = {"model": "command-r", "message": prompt, "temperature": 0.3}
-            r = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=8)
+            r = requests.post("https://api.cohere.ai/v1/chat", headers=headers, json=payload, timeout=10)
             if r.status_code != 200:
                 raise Exception(f"Cohere error: {r.status_code}")
             text = r.json()["text"]
@@ -697,7 +665,7 @@ def fallback_translate_and_summarize(title, content):
     if title:
         try:
             t = translator.translate(title)
-            if t and not is_error_text(t) and not is_mostly_english(t):
+            if t and not is_error_text(t):
                 translated_title = t
         except Exception as e:
             print(f"Title translation error: {e}")
@@ -706,15 +674,13 @@ def fallback_translate_and_summarize(title, content):
     if summary_clean and len(summary_clean) > 50:
         try:
             t = translator.translate(summary_clean[:1000])
-            if t and not is_error_text(t) and not is_mostly_english(t):
+            if t and not is_error_text(t):
                 translated_summary = t
         except Exception as e:
             print(f"Summary translation error: {e}")
 
     if not translated_summary and summary_clean and len(summary_clean) > 30:
         translated_summary = summary_clean[:300]
-        if not translated_summary.endswith("."):
-            translated_summary += "..."
 
     return translated_title, translated_summary
 
@@ -770,8 +736,9 @@ def send_news_item(item):
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
 
+    # اولویت با ویدیو
     if video_url:
-        print(f"  → Sending video: {video_url[:80]}")
+        print(f"  → Trying video: {video_url[:80]}")
         success = send_video_from_link(video_url, caption)
         if success:
             return True
@@ -803,8 +770,6 @@ def fetch_and_send():
         if total_sent_this_run >= MAX_POSTS_PER_RUN:
             break
 
-        is_foreign = source_name in FOREIGN_SOURCES
-
         print(f"Checking feed: {source_name}")
         try:
             feed = feedparser.parse(feed_url)
@@ -825,8 +790,9 @@ def fetch_and_send():
                 if not link or not title:
                     continue
 
+                # فیلترهای ارزان
                 if link in sent_links:
-                    print(f"Skipped duplicate link: {title}")
+                    print(f"Skipped duplicate link: {title[:50]}")
                     continue
 
                 if any(kw in title.lower() for kw in error_keywords):
@@ -836,70 +802,68 @@ def fetch_and_send():
                 clean_content = clean_html(raw_content)
 
                 if len(clean_content.split()) < 8:
-                    print(f"Skipped (short content): {title}")
+                    print(f"Skipped short content: {title[:50]}")
                     continue
 
                 if is_unwanted(title, "", ""):
-                    print(f"Skipped unwanted: {title}")
+                    print(f"Skipped unwanted: {title[:50]}")
                     continue
 
-                # فقط برای منابع ایرانی فیلتر محلی اعمال کن
-                if not is_foreign:
-                    if has_local_category(entry):
-                        print(f"Skipped (local tag): {title}")
-                        continue
-                    if is_local_news(title, "", ""):
-                        print(f"Skipped local: {title}")
-                        continue
+                if is_local_news(title, "", ""):
+                    print(f"Skipped local: {title[:50]}")
+                    continue
 
-                # محاسبه‌ی امتیاز با کلمات فارسی و انگلیسی
-                importance_score = calculate_importance(title, "", clean_content, is_foreign=is_foreign)
+                # امتیاز اهمیت (با source)
+                importance_score = calculate_importance(title, "", clean_content, source=source_name)
                 if importance_score < IMPORTANCE_THRESHOLD:
-                    print(f"Skipped low importance ({importance_score}): {title}")
+                    print(f"Skipped low importance ({importance_score}): {title[:50]}")
                     continue
 
                 category = classify_news(title, clean_content)
                 if category_counts.get(category, 0) >= CATEGORY_LIMITS.get(category, 3):
-                    print(f"Skipped category limit ({category}): {title}")
+                    print(f"Skipped category limit ({category}): {title[:50]}")
                     continue
 
                 norm_title_orig = normalize_title(title)
                 if is_duplicate_title(norm_title_orig, sent_titles):
-                    print(f"Skipped duplicate title: {title}")
+                    print(f"Skipped duplicate title: {title[:50]}")
                     continue
 
-                print(f"→ Sending to AI: {title[:60]}...")
+                # چک تکراری با کلمات کلیدی
+                if is_duplicate_keywords(title, sent_titles):
+                    print(f"Skipped keyword duplicate: {title[:50]}")
+                    continue
 
+                # ارسال به AI
+                print(f"→ AI: {title[:60]}...")
                 translated_title, translated_summary, used_ai = process_with_ai(title, clean_content)
 
                 if is_error_text(translated_title) or is_error_text(translated_summary):
-                    print(f"Skipped error text: {title}")
+                    print(f"Skipped error text: {title[:50]}")
                     continue
 
                 if used_ai:
                     if is_mostly_english(translated_title):
-                        print(f"Skipped untranslated: {title}")
+                        print(f"Skipped untranslated: {title[:50]}")
                         continue
                     if is_short_summary(translated_summary):
-                        print(f"Skipped short summary: {title}")
+                        print(f"Skipped short summary: {title[:50]}")
                         continue
                 else:
                     if not translated_summary or is_short_summary(translated_summary):
                         if clean_content and len(clean_content) > 30:
                             translated_summary = clean_content[:300]
                         else:
-                            print(f"Skipped (no summary): {title}")
+                            print(f"Skipped (no summary): {title[:50]}")
                             continue
 
-                # استخراج ویدیو
+                # استخراج رسانه
                 video_url = extract_video_url(entry)
                 image_url = extract_image_url(entry)
 
                 # اگه RSS ویدیو نداشت، از صفحه بگیر
                 if not video_url:
                     video_url = fetch_video_from_page(link)
-                    if video_url:
-                        print(f"  Found video on page: {video_url[:80]}")
 
                 news_item = {
                     "title": translated_title,
@@ -921,7 +885,7 @@ def fetch_and_send():
                     if total_sent_this_run < MAX_POSTS_PER_RUN:
                         time.sleep(POST_DELAY_SECONDS)
                 else:
-                    print(f"✗ Failed: {title}")
+                    print(f"✗ Failed: {title[:50]}")
 
             except Exception as e:
                 print(f"Error processing entry: {e}")
