@@ -6,12 +6,12 @@ import re
 import difflib
 from deep_translator import GoogleTranslator
 import pyshorteners
+from bs4 import BeautifulSoup
 
 # ---------- تنظیمات ----------
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
 
-# ---------- سرویس‌های AI ----------
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY")
@@ -40,6 +40,11 @@ if not ai_services:
     print("No AI API keys found, falling back to deep-translator.")
 
 # ---------- فیدها ----------
+FOREIGN_SOURCES = [
+    "CNN", "BBC", "Reuters", "Al Jazeera", "RT", "Associated Press",
+    "The Guardian", "Deutsche Welle", "France 24", "New York Times"
+]
+
 RSS_FEEDS = [
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
@@ -62,6 +67,28 @@ RSS_FEEDS = [
 
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
+
+# ---------- کلمات مهم انگلیسی (برای منابع خارجی) ----------
+EN_URGENT_KEYWORDS = [
+    "war", "attack", "explosion", "earthquake", "flood", "fire",
+    "sanctions", "missile", "nuclear", "killed", "assassination",
+    "coup", "fighter jet", "emergency", "breaking", "urgent",
+    "invasion", "strike", "bomb", "crisis", "collapse", "shooting"
+]
+
+EN_IMPORTANT_KEYWORDS = [
+    "war", "attack", "explosion", "economy", "inflation", "oil",
+    "price", "dollar", "gold", "stock", "election", "president",
+    "government", "parliament", "law", "crisis", "virus", "vaccine",
+    "peace", "negotiation", "agreement", "missile", "nuclear",
+    "america", "iran", "china", "russia", "ukraine", "palestine",
+    "israel", "iraq", "afghanistan", "pakistan", "india", "turkey",
+    "europe", "britain", "france", "germany", "refugee", "migration",
+    "health", "education", "technology", "artificial intelligence",
+    "internet", "space", "environment", "climate change", "crime",
+    "court", "police", "army", "gaza", "lebanon", "yemen", "syria",
+    "saudi", "emirates", "kurdistan", "hostage", "protest"
+]
 
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
@@ -103,15 +130,17 @@ LOCAL_BLACKLIST = [
     "استاندار", "فرماندار", "فرمانداری", "شهردار", "شورای شهر", "بخشدار",
     "استان", "شهرستان", "روستا", "پروژه‌های عمرانی", "عمرانی", "زیرگذر",
     "پل", "جاده", "کلنگ‌زنی", "بهره‌برداری", "افتتاح", "بسیج سازندگی",
-    "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی"
+    "دادستان", "پلیس", "شهر", "بخش", "دهیاری", "آبفا", "تعهدات جهادی",
+    "شهرداری", "مدیرکل", "معاونت", "معاون", "رئیس سازمان", "رئیس اداره",
+    "آبدانان", "جاسک", "دماوند", "قشم", "بندر", "نردبان"
 ]
 
 IMPORTANCE_THRESHOLD = 6
 
 CATEGORY_LIMITS = {
-    "sports": 1, "art": 1, "satiere": 2, "economy": 4,
+    "sports": 1, "art": 2, "satiere": 3, "economy": 4,
     "politics": 4, "conflict": 5, "technology": 2,
-    "health": 1, "environment": 1, "other": 2,
+    "health": 2, "environment": 2, "other": 3,
 }
 
 MAX_POSTS_PER_RUN = 8
@@ -235,10 +264,42 @@ def is_local_news(title, translated_title="", translated_summary=""):
     return False
 
 
-def calculate_importance(title, translated_title, summary=""):
+def has_local_category(entry):
+    """چک می‌کنه اگه خبر تگ استانی/محلی داره"""
+    if 'tags' not in entry:
+        return False
+
+    local_tags = [
+        "استانی", "شهری", "محلی", "منطقه‌ای", "استان‌ها",
+        "کرمان", "یزد", "اصفهان", "شیراز", "مشهد", "تبریز",
+        "رشت", "اهواز", "قم", "کرج", "ارومیه", "زاهدان",
+        "بوشهر", "سنندج", "اراک", "گرگان", "قزوین", "زنجان",
+        "سمنان", "بجنورد", "بیرجند", "یاسوج", "خرم‌آباد",
+        "اردبیل", "قشم", "کیش", "جاسک", "چابهار", "بندرعباس",
+        "لامرد", "سراوان", "خوی", "چناران", "لرستان", "کردستان",
+        "هرمزگان", "گلستان", "گیلان", "مازندران", "مرکزی",
+        "همدان", "کرمانشاه", "ایلام", "البرز"
+    ]
+
+    for tag in entry.tags:
+        term = tag.get('term', '').strip()
+        if not term:
+            continue
+        if term in local_tags:
+            return True
+        for lt in local_tags:
+            if lt in term:
+                return True
+    return False
+
+
+def calculate_importance(title, translated_title, summary="", is_foreign=False):
+    """محاسبه امتیاز اهمیت - برای منابع خارجی کلمات انگلیسی هم چک می‌شن"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
+
+    # کلمات فارسی
     for keyword in IMPORTANT_KEYWORDS:
         if keyword in title_text:
             score += 3
@@ -247,6 +308,18 @@ def calculate_importance(title, translated_title, summary=""):
     for keyword in URGENT_KEYWORDS:
         if keyword in title_text:
             score += 5
+
+    # برای منابع خارجی: کلمات انگلیسی هم چک بشن
+    if is_foreign:
+        for keyword in EN_IMPORTANT_KEYWORDS:
+            if keyword in title_text:
+                score += 3
+            elif keyword in summary_text:
+                score += 1
+        for keyword in EN_URGENT_KEYWORDS:
+            if keyword in title_text:
+                score += 5
+
     return score
 
 
@@ -261,14 +334,22 @@ def is_duplicate_title(new_title, existing_titles, threshold=0.85):
 def classify_news(title, summary=""):
     text = (title + " " + summary).lower()
     categories = {
-        "conflict": ["جنگ", "حمله", "درگیری", "موشک", "انفجار", "ارتش", "نظامی", "تهاجم"],
-        "economy": ["اقتصاد", "تورم", "نفت", "دلار", "بورس", "قیمت", "تجارت", "سهام", "بودجه"],
-        "politics": ["انتخابات", "رئیس‌جمهور", "دولت", "مجلس", "سیاست", "قانون", "تحریم", "مذاکره"],
-        "sports": ["ورزش", "فوتبال", "بسکتبال", "المپیک", "لیگ", "جام"],
-        "technology": ["فناوری", "هوش مصنوعی", "اینترنت", "ربات", "نرم‌افزار", "استارتاپ", "دیجیتال"],
-        "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو"],
-        "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل"],
-        "art": ["فیلم", "سریال", "بازیگر", "سینما", "کارگردان", "جشنواره", "تئاتر", "هنرمند"],
+        "conflict": ["جنگ", "حمله", "درگیری", "موشک", "انفجار", "ارتش", "نظامی", "تهاجم",
+                     "war", "attack", "missile", "explosion", "military"],
+        "economy": ["اقتصاد", "تورم", "نفت", "دلار", "بورس", "قیمت", "تجارت", "سهام", "بودجه",
+                    "economy", "inflation", "oil", "price", "dollar", "stock"],
+        "politics": ["انتخابات", "رئیس‌جمهور", "دولت", "مجلس", "سیاست", "قانون", "تحریم", "مذاکره",
+                     "election", "president", "government", "sanction", "negotiation"],
+        "sports": ["ورزش", "فوتبال", "بسکتبال", "المپیک", "لیگ", "جام",
+                   "sport", "football", "olympic", "league"],
+        "technology": ["فناوری", "هوش مصنوعی", "اینترنت", "ربات", "نرم‌افزار", "استارتاپ", "دیجیتال",
+                       "technology", "AI", "internet", "robot", "software"],
+        "health": ["سلامت", "بهداشت", "کرونا", "ویروس", "واکسن", "بیمارستان", "دارو",
+                   "health", "virus", "vaccine", "hospital"],
+        "environment": ["محیط زیست", "آب و هوا", "اقلیم", "آلودگی", "حیات وحش", "جنگل",
+                        "environment", "climate", "pollution", "forest"],
+        "art": ["فیلم", "سریال", "بازیگر", "سینما", "کارگردان", "جشنواره", "تئاتر", "هنرمند",
+                "movie", "film", "actor", "cinema", "festival"],
         "satiere": ["طنز", "نقد", "کلیپ", "ویدیو", "پربازدید", "کمدی", "شصت‌چی", "مدیری"],
         "other": []
     }
@@ -309,6 +390,7 @@ def extract_image_url(entry):
 
 
 def extract_video_url(entry):
+    """استخراج ویدیو از entry RSS"""
     if 'media_content' in entry:
         for media in entry.media_content:
             url = media.get('url', '')
@@ -320,22 +402,127 @@ def extract_video_url(entry):
                 return url
             if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
                 return url
+
+    if 'media_player' in entry:
+        for player in entry.media_player:
+            url = player.get('url', '')
+            if url:
+                return url
+
     if 'enclosures' in entry:
         for enc in entry.enclosures:
             url = enc.get('url', '')
             type_attr = enc.get('type', '').lower()
             if url and ('video' in type_attr or 'mpeg' in type_attr):
                 return url
+            if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
+                return url
+
     summary = entry.get('summary', entry.get('description', ''))
+
+    aparat_match = re.search(r'(?:aparat\.com/v/|aparat\.com/embed/v/)([a-zA-Z0-9]+)', summary)
+    if aparat_match:
+        return f"APARAT:{aparat_match.group(1)}"
+
+    youtube_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', summary)
+    if youtube_match:
+        return f"YOUTUBE:{youtube_match.group(1)}"
+
     for pattern in [
         r'<video[^>]+src=["\'](.*?)["\']',
         r'<source[^>]+src=["\'](.*?)["\']',
-        r'https?://[^\s"\']+\.(?:mp4|m3u8|webm|mov)(?:\?[^\s"\']*)?',
     ]:
         match = re.search(pattern, summary, re.IGNORECASE)
         if match:
-            return match.group(1) if match.groups() else match.group(0)
+            return match.group(1)
+
+    match = re.search(r'https?://[^\s"\']+\.(?:mp4|m3u8|webm)(?:\?[^\s"\']*)?', summary)
+    if match:
+        return match.group(0)
+
     return None
+
+
+def get_aparat_mp4(video_hash):
+    """دریافت لینک mp4 مستقیم از آپارات"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        api_url = f"https://www.aparat.com/etc/api/video/videohash/{video_hash}"
+        api_resp = requests.get(api_url, timeout=8, headers=headers)
+        if api_resp.status_code == 200:
+            data = api_resp.json()
+            video = data.get("video", {})
+            file_url = video.get("file_url")
+            if file_url:
+                return file_url
+        return None
+    except Exception as e:
+        print(f"get_aparat_mp4 error: {e}")
+        return None
+
+
+def fetch_video_from_page(url):
+    """استخراج ویدیو از صفحه‌ی خبر"""
+    try:
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+        resp = requests.get(url, timeout=10, headers=headers)
+        if resp.status_code != 200:
+            return None
+
+        html = resp.text
+
+        aparat_match = re.search(r'(?:aparat\.com/v/|aparat\.com/embed/v/)([a-zA-Z0-9]+)', html)
+        if aparat_match:
+            video_hash = aparat_match.group(1)
+            print(f"  Found Aparat hash: {video_hash}")
+            mp4 = get_aparat_mp4(video_hash)
+            if mp4:
+                return mp4
+            return f"APARAT:{video_hash}"
+
+        youtube_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', html)
+        if youtube_match:
+            return f"YOUTUBE:{youtube_match.group(1)}"
+
+        soup = BeautifulSoup(html, 'html.parser')
+
+        for video in soup.find_all('video'):
+            src = video.get('src')
+            if src and src.startswith('http'):
+                return src
+            for source in video.find_all('source'):
+                src = source.get('src')
+                if src and src.startswith('http'):
+                    return src
+
+        for iframe in soup.find_all('iframe'):
+            src = iframe.get('src', '')
+            if not src:
+                continue
+            ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', src)
+            if ap_match:
+                return f"APARAT:{ap_match.group(1)}"
+            yt_match = re.search(r'youtube\.com/embed/([a-zA-Z0-9_-]+)', src)
+            if yt_match:
+                return f"YOUTUBE:{yt_match.group(1)}"
+            if '.mp4' in src:
+                return src
+
+        for meta in soup.find_all('meta'):
+            prop = meta.get('property', '') or meta.get('name', '')
+            if prop in ('og:video', 'og:video:url', 'og:video:secure_url', 'twitter:player:stream'):
+                content = meta.get('content', '')
+                if content and content.startswith('http'):
+                    return content
+
+        mp4_match = re.search(r'https?://[^\s"\'<>]+\.(?:mp4|m3u8)(?:\?[^\s"\'<>]*)?', html)
+        if mp4_match:
+            return mp4_match.group(0)
+
+        return None
+    except Exception as e:
+        print(f"fetch_video_from_page error: {e}")
+        return None
 
 
 def escape_html(text):
@@ -376,6 +563,33 @@ def send_telegram_video(video_url, caption):
     except Exception as e:
         print(f"Error sending video: {e}")
         return False
+
+
+def send_video_from_link(video_url, caption):
+    """ارسال ویدیو به تلگرام - هندل کردن آپارات و یوتیوب"""
+    if video_url.startswith("APARAT:"):
+        video_hash = video_url.replace("APARAT:", "")
+        mp4 = get_aparat_mp4(video_hash)
+        if mp4:
+            success = send_telegram_video(mp4, caption)
+            if success:
+                return True
+        caption += f"\n\n🎬 <a href='https://www.aparat.com/v/{video_hash}'>تماشا در آپارات</a>"
+        return send_telegram_message(caption)
+
+    if video_url.startswith("YOUTUBE:"):
+        video_id = video_url.replace("YOUTUBE:", "")
+        caption += f"\n\n🎬 <a href='https://youtu.be/{video_id}'>تماشا در یوتیوب</a>"
+        return send_telegram_message(caption)
+
+    if video_url.startswith("http"):
+        success = send_telegram_video(video_url, caption)
+        if success:
+            return True
+        caption += f"\n\n🎬 <a href='{video_url}'>تماشای ویدیو</a>"
+        return send_telegram_message(caption)
+
+    return False
 
 
 # ---------- توابع AI ----------
@@ -477,11 +691,9 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
-    """بدون AI - با مترجم گوگل. حتی اگه گوگل هم fail بده، عنوان اصلی حفظ می‌شه"""
     translated_title = title
     translated_summary = ""
 
-    # تلاش برای ترجمه‌ی عنوان
     if title:
         try:
             t = translator.translate(title)
@@ -490,7 +702,6 @@ def fallback_translate_and_summarize(title, content):
         except Exception as e:
             print(f"Title translation error: {e}")
 
-    # تلاش برای ترجمه‌ی خلاصه
     summary_clean = clean_html(content)
     if summary_clean and len(summary_clean) > 50:
         try:
@@ -500,7 +711,6 @@ def fallback_translate_and_summarize(title, content):
         except Exception as e:
             print(f"Summary translation error: {e}")
 
-    # اگه خلاصه خالی موند ولی محتوای اصلی وجود داره، خلاصه‌ی خام بساز
     if not translated_summary and summary_clean and len(summary_clean) > 30:
         translated_summary = summary_clean[:300]
         if not translated_summary.endswith("."):
@@ -510,10 +720,8 @@ def fallback_translate_and_summarize(title, content):
 
 
 def process_with_ai(title, content):
-    """سه مقدار برمی‌گردونه: title, summary, used_ai"""
     global ai_failure_count
 
-    # اگه تعداد شکست‌های متوالی زیاد بود، مستقیم برو سراغ fallback
     if ai_failure_count >= AI_FAILURE_LIMIT:
         result = fallback_translate_and_summarize(title, content)
         return result[0], result[1], False
@@ -563,7 +771,8 @@ def send_news_item(item):
     caption += SLOGAN
 
     if video_url:
-        success = send_telegram_video(video_url, caption)
+        print(f"  → Sending video: {video_url[:80]}")
+        success = send_video_from_link(video_url, caption)
         if success:
             return True
         if image_url:
@@ -594,6 +803,8 @@ def fetch_and_send():
         if total_sent_this_run >= MAX_POSTS_PER_RUN:
             break
 
+        is_foreign = source_name in FOREIGN_SOURCES
+
         print(f"Checking feed: {source_name}")
         try:
             feed = feedparser.parse(feed_url)
@@ -614,10 +825,6 @@ def fetch_and_send():
                 if not link or not title:
                     continue
 
-                # ==========================================
-                # مرحله 1: فیلترهای ارزان (بدون AI)
-                # ==========================================
-
                 if link in sent_links:
                     print(f"Skipped duplicate link: {title}")
                     continue
@@ -636,11 +843,17 @@ def fetch_and_send():
                     print(f"Skipped unwanted: {title}")
                     continue
 
-                if is_local_news(title, "", ""):
-                    print(f"Skipped local: {title}")
-                    continue
+                # فقط برای منابع ایرانی فیلتر محلی اعمال کن
+                if not is_foreign:
+                    if has_local_category(entry):
+                        print(f"Skipped (local tag): {title}")
+                        continue
+                    if is_local_news(title, "", ""):
+                        print(f"Skipped local: {title}")
+                        continue
 
-                importance_score = calculate_importance(title, "", clean_content)
+                # محاسبه‌ی امتیاز با کلمات فارسی و انگلیسی
+                importance_score = calculate_importance(title, "", clean_content, is_foreign=is_foreign)
                 if importance_score < IMPORTANCE_THRESHOLD:
                     print(f"Skipped low importance ({importance_score}): {title}")
                     continue
@@ -655,19 +868,14 @@ def fetch_and_send():
                     print(f"Skipped duplicate title: {title}")
                     continue
 
-                # ==========================================
-                # مرحله 2: فقط حالا خبر رو به AI می‌فرستیم
-                # ==========================================
                 print(f"→ Sending to AI: {title[:60]}...")
 
                 translated_title, translated_summary, used_ai = process_with_ai(title, clean_content)
 
-                # فیلتر خطا (همیشه اعمال می‌شه)
                 if is_error_text(translated_title) or is_error_text(translated_summary):
                     print(f"Skipped error text: {title}")
                     continue
 
-                # فیلترهای سختگیرانه فقط اگه AI موفق بوده
                 if used_ai:
                     if is_mostly_english(translated_title):
                         print(f"Skipped untranslated: {title}")
@@ -676,7 +884,6 @@ def fetch_and_send():
                         print(f"Skipped short summary: {title}")
                         continue
                 else:
-                    # در حالت fallback: سختگیری کمتر
                     if not translated_summary or is_short_summary(translated_summary):
                         if clean_content and len(clean_content) > 30:
                             translated_summary = clean_content[:300]
@@ -684,9 +891,15 @@ def fetch_and_send():
                             print(f"Skipped (no summary): {title}")
                             continue
 
-                # استخراج رسانه
+                # استخراج ویدیو
                 video_url = extract_video_url(entry)
                 image_url = extract_image_url(entry)
+
+                # اگه RSS ویدیو نداشت، از صفحه بگیر
+                if not video_url:
+                    video_url = fetch_video_from_page(link)
+                    if video_url:
+                        print(f"  Found video on page: {video_url[:80]}")
 
                 news_item = {
                     "title": translated_title,
