@@ -37,15 +37,17 @@ if COHERE_API_KEY:
     ai_services.append(("cohere", COHERE_API_KEY))
 
 if not ai_services:
-    print("No AI API keys found, falling back to deep-translator.")
+    print("No AI API keys found, will use fallback translators.")
 
-# ---------- منابع ایرانی ----------
+# ---------- منابع ایرانی (بدون فیلتر ترجمه) ----------
 IRANIAN_SOURCES = [
-    "Tasnim", "IRNA", "Fars", "Mehr", "ISNA", "Tabnak", "Eghtesadonline"
+    "Tasnim", "IRNA", "Fars", "Mehr", "ISNA", "Tabnak", "Eghtesadonline",
+    "Hamshahri", "KhabarOnline", "IMNA", "ISNA"
 ]
 
 # ---------- فیدها ----------
 RSS_FEEDS = [
+    # خارجی
     ("CNN", "http://rss.cnn.com/rss/edition.rss"),
     ("BBC", "http://feeds.bbci.co.uk/news/world/rss.xml"),
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
@@ -56,6 +58,8 @@ RSS_FEEDS = [
     ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
     ("France 24", "https://www.france24.com/en/rss"),
     ("New York Times", "https://rss.nytimes.com/services/xml/rss/nyt/World.xml"),
+
+    # ایرانی
     ("Tasnim", "https://www.tasnimnews.com/fa/rss/feed/0/8/0/%D8%AA%D9%85%D8%A7%D9%85-%D8%A7%D8%AE%D8%A8%D8%A7%D8%B1"),
     ("IRNA", "https://www.irna.ir/rss/"),
     ("Fars", "https://www.farsnews.ir/rss"),
@@ -63,6 +67,9 @@ RSS_FEEDS = [
     ("ISNA", "https://www.isna.ir/rss"),
     ("Tabnak", "https://www.tabnak.ir/fa/rss/allnews"),
     ("Eghtesadonline", "https://www.eghtesadonline.com/fa/rss/allnews"),
+    ("Hamshahri", "https://www.hamshahrionline.ir/rss"),
+    ("KhabarOnline", "https://www.khabaronline.ir/rss"),
+    ("IMNA", "https://www.imna.ir/rss"),
 ]
 
 SENT_LINKS_FILE = "sent_links.txt"
@@ -138,6 +145,12 @@ CATEGORY_LIMITS = {
     "health": 1, "environment": 1, "other": 2,
 }
 
+# تعادل بین منابع داخلی و خارجی
+SOURCE_TYPE_LIMITS = {
+    "iranian": 5,
+    "foreign": 3,
+}
+
 MAX_POSTS_PER_RUN = 8
 POST_DELAY_SECONDS = 10
 
@@ -150,6 +163,8 @@ SOURCE_HASHTAGS = {
     "France 24": "#فرانس_۲۴", "New York Times": "#نیویورک_تایمز",
     "Fars": "#فارس", "Mehr": "#مهر", "ISNA": "#ایسنا",
     "Tabnak": "#تابناک", "Eghtesadonline": "#اقتصادآنلاین",
+    "Hamshahri": "#همشهری", "KhabarOnline": "#خبرآنلاین",
+    "IMNA": "#ایمنا",
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
@@ -189,13 +204,10 @@ def save_list_to_file(filename, data_list):
 
 
 def clean_html(raw_html):
-    """حذف تگ‌های HTML و decode کردن entity ها"""
     if not raw_html:
         return ""
-    # حذف تگ‌ها
     cleanr = re.compile('<.*?>')
     cleantext = re.sub(cleanr, '', raw_html)
-    # decode کردن entity ها (&#039; → ')
     cleantext = html_module.unescape(cleantext)
     return cleantext.strip()
 
@@ -266,12 +278,10 @@ def is_local_news(title, translated_title="", translated_summary=""):
 
 
 def calculate_importance(title, translated_title, summary="", source=""):
-    """محاسبه امتیاز با پشتیبانی از کلمات انگلیسی"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
 
-    # کلمات فارسی
     for keyword in IMPORTANT_KEYWORDS:
         if keyword in title_text:
             score += 3
@@ -282,7 +292,6 @@ def calculate_importance(title, translated_title, summary="", source=""):
         if keyword in title_text:
             score += 5
 
-    # کلمات انگلیسی (فقط برای منابع خارجی)
     if source not in IRANIAN_SOURCES:
         for keyword in IMPORTANT_KEYWORDS_EN:
             if keyword in title_text:
@@ -306,7 +315,6 @@ def is_duplicate_title(new_title, existing_titles, threshold=0.85):
 
 
 def is_duplicate_keywords(new_title, existing_titles, min_common=3):
-    """تشخیص تکراری بر اساس کلمات کلیدی مشترک"""
     stop_words = {
         "از", "به", "در", "با", "را", "که", "این", "آن", "یک", "دو", "بر",
         "برای", "شده", "کرد", "است", "هست", "بود", "شد", "می", "های", "ها",
@@ -393,7 +401,6 @@ def extract_image_url(entry):
 
 
 def extract_video_url(entry):
-    """استخراج ویدیو از entry RSS"""
     if 'media_content' in entry:
         for media in entry.media_content:
             url = media.get('url', '')
@@ -417,12 +424,10 @@ def extract_video_url(entry):
 
     summary = entry.get('summary', entry.get('description', ''))
 
-    # آپارات در summary
     ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', summary)
     if ap_match:
         return f"APARAT:{ap_match.group(1)}"
 
-    # یوتیوب در summary
     yt_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', summary)
     if yt_match:
         return f"YOUTUBE:{yt_match.group(1)}"
@@ -440,16 +445,13 @@ def extract_video_url(entry):
 
 
 def get_aparat_mp4(video_hash):
-    """دریافت لینک mp4 مستقیم از آپارات"""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         api_url = f"https://www.aparat.com/etc/api/video/videohash/{video_hash}"
         r = requests.get(api_url, timeout=8, headers=headers)
         if r.status_code == 200:
             video = r.json().get("video", {})
-            file_url = video.get("file_url")
-            if file_url:
-                return file_url
+            return video.get("file_url")
         return None
     except Exception as e:
         print(f"get_aparat_mp4 error: {e}")
@@ -457,7 +459,6 @@ def get_aparat_mp4(video_hash):
 
 
 def fetch_video_from_page(url):
-    """استخراج ویدیو از صفحه‌ی خبر"""
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         r = requests.get(url, timeout=10, headers=headers)
@@ -466,22 +467,17 @@ def fetch_video_from_page(url):
 
         html = r.text
 
-        # آپارات
         ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', html)
         if ap_match:
             video_hash = ap_match.group(1)
             print(f"  → Found Aparat: {video_hash}")
             mp4 = get_aparat_mp4(video_hash)
-            if mp4:
-                return mp4
-            return f"APARAT:{video_hash}"
+            return mp4 if mp4 else f"APARAT:{video_hash}"
 
-        # یوتیوب
         yt_match = re.search(r'(?:youtube\.com/embed/|youtu\.be/)([a-zA-Z0-9_-]+)', html)
         if yt_match:
             return f"YOUTUBE:{yt_match.group(1)}"
 
-        # mp4 مستقیم در HTML
         mp4_match = re.search(r'https?://[^\s"\'<>]+\.mp4(?:\?[^\s"\'<>]*)?', html)
         if mp4_match:
             return mp4_match.group(0)
@@ -533,24 +529,19 @@ def send_telegram_video(video_url, caption):
 
 
 def send_video_from_link(video_url, caption):
-    """ارسال ویدیو - هندل کردن آپارات و یوتیوب"""
-    # آپارات
     if video_url.startswith("APARAT:"):
         video_hash = video_url.replace("APARAT:", "")
         mp4 = get_aparat_mp4(video_hash)
-        if mp4:
-            if send_telegram_video(mp4, caption):
-                return True
+        if mp4 and send_telegram_video(mp4, caption):
+            return True
         caption += f"\n\n🎬 <a href='https://www.aparat.com/v/{video_hash}'>تماشا در آپارات</a>"
         return send_telegram_message(caption)
 
-    # یوتیوب
     if video_url.startswith("YOUTUBE:"):
         video_id = video_url.replace("YOUTUBE:", "")
         caption += f"\n\n🎬 <a href='https://youtu.be/{video_id}'>تماشا در یوتیوب</a>"
         return send_telegram_message(caption)
 
-    # mp4 مستقیم
     if video_url.startswith("http"):
         if send_telegram_video(video_url, caption):
             return True
@@ -558,6 +549,39 @@ def send_video_from_link(video_url, caption):
         return send_telegram_message(caption)
 
     return False
+
+
+# ---------- ترجمه با MyMemory ----------
+def translate_via_mymemory(text, target_lang='fa'):
+    """ترجمه با MyMemory (رایگان، بدون کلید)"""
+    if not text or len(text) < 2:
+        return text
+    try:
+        text_short = text[:500]
+        url = "https://api.mymemory.translated.net/get"
+        params = {
+            "q": text_short,
+            "langpair": f"en|{target_lang}"
+        }
+        r = requests.get(url, params=params, timeout=10)
+        if r.status_code == 200:
+            data = r.json()
+            translated = data.get("responseData", {}).get("translatedText", "")
+            if translated and not is_error_text(translated):
+                if len(text) > 500:
+                    remaining = text[500:1000]
+                    params["q"] = remaining
+                    r2 = requests.get(url, params=params, timeout=10)
+                    if r2.status_code == 200:
+                        data2 = r2.json()
+                        trans2 = data2.get("responseData", {}).get("translatedText", "")
+                        if trans2:
+                            translated += " " + trans2
+                return translated
+        return text
+    except Exception as e:
+        print(f"MyMemory error: {e}")
+        return text
 
 
 # ---------- توابع AI ----------
@@ -659,25 +683,42 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
+    """Fallback ترجمه: Google → MyMemory"""
     translated_title = title
     translated_summary = ""
 
+    # عنوان: Google
     if title:
         try:
             t = translator.translate(title)
-            if t and not is_error_text(t):
+            if t and not is_error_text(t) and not is_mostly_english(t):
                 translated_title = t
         except Exception as e:
-            print(f"Title translation error: {e}")
+            print(f"Google title error: {e}")
 
+    # اگه Google fail داد، MyMemory
+    if is_mostly_english(translated_title):
+        print(f"  → MyMemory for title")
+        mm = translate_via_mymemory(title, 'fa')
+        if mm and not is_mostly_english(mm):
+            translated_title = mm
+
+    # خلاصه: Google
     summary_clean = clean_html(content)
     if summary_clean and len(summary_clean) > 50:
         try:
             t = translator.translate(summary_clean[:1000])
-            if t and not is_error_text(t):
+            if t and not is_error_text(t) and not is_mostly_english(t):
                 translated_summary = t
         except Exception as e:
-            print(f"Summary translation error: {e}")
+            print(f"Google summary error: {e}")
+
+        # MyMemory
+        if is_mostly_english(translated_summary) or not translated_summary:
+            print(f"  → MyMemory for summary")
+            mm = translate_via_mymemory(summary_clean[:500], 'fa')
+            if mm and not is_mostly_english(mm):
+                translated_summary = mm
 
     if not translated_summary and summary_clean and len(summary_clean) > 30:
         translated_summary = summary_clean[:300]
@@ -736,9 +777,7 @@ def send_news_item(item):
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
 
-    # اولویت با ویدیو
     if video_url:
-        print(f"  → Trying video: {video_url[:80]}")
         success = send_video_from_link(video_url, caption)
         if success:
             return True
@@ -765,6 +804,8 @@ def fetch_and_send():
 
     total_sent_this_run = 0
     category_counts = {}
+    iranian_count = 0
+    foreign_count = 0
 
     for source_name, feed_url in RSS_FEEDS:
         if total_sent_this_run >= MAX_POSTS_PER_RUN:
@@ -780,6 +821,8 @@ def fetch_and_send():
         if feed.bozo or not feed.entries:
             continue
 
+        is_iranian_source = source_name in IRANIAN_SOURCES
+
         for entry in feed.entries:
             if total_sent_this_run >= MAX_POSTS_PER_RUN:
                 break
@@ -790,7 +833,10 @@ def fetch_and_send():
                 if not link or not title:
                     continue
 
-                # فیلترهای ارزان
+                # ==========================================
+                # مرحله 1: فیلترهای ارزان (بدون AI، بدون ترجمه)
+                # ==========================================
+
                 if link in sent_links:
                     print(f"Skipped duplicate link: {title[:50]}")
                     continue
@@ -805,63 +851,80 @@ def fetch_and_send():
                     print(f"Skipped short content: {title[:50]}")
                     continue
 
-                if is_unwanted(title, "", ""):
-                    print(f"Skipped unwanted: {title[:50]}")
-                    continue
+                # فیلترهای نامطلوب فقط برای منابع خارجی
+                if not is_iranian_source:
+                    if is_unwanted(title, "", ""):
+                        print(f"Skipped unwanted: {title[:50]}")
+                        continue
+                    if is_local_news(title, "", ""):
+                        print(f"Skipped local: {title[:50]}")
+                        continue
+                else:
+                    # برای ایرانی، فقط blacklist عمومی
+                    lower_title = title.lower()
+                    if any(w in lower_title for w in EN_BLACKLIST):
+                        print(f"Skipped blacklist: {title[:50]}")
+                        continue
 
-                if is_local_news(title, "", ""):
-                    print(f"Skipped local: {title[:50]}")
-                    continue
-
-                # امتیاز اهمیت (با source)
+                # امتیاز اهمیت (قبل از ترجمه)
                 importance_score = calculate_importance(title, "", clean_content, source=source_name)
                 if importance_score < IMPORTANCE_THRESHOLD:
                     print(f"Skipped low importance ({importance_score}): {title[:50]}")
                     continue
 
+                # دسته‌بندی
                 category = classify_news(title, clean_content)
                 if category_counts.get(category, 0) >= CATEGORY_LIMITS.get(category, 3):
                     print(f"Skipped category limit ({category}): {title[:50]}")
                     continue
 
+                # چک سقف منابع (تعادل داخلی/خارجی)
+                if is_iranian_source and iranian_count >= SOURCE_TYPE_LIMITS["iranian"]:
+                    print(f"Skipped (Iranian quota): {title[:50]}")
+                    continue
+                if not is_iranian_source and foreign_count >= SOURCE_TYPE_LIMITS["foreign"]:
+                    print(f"Skipped (Foreign quota): {title[:50]}")
+                    continue
+
+                # چک تکراری عنوان (روی عنوان اصلی)
                 norm_title_orig = normalize_title(title)
                 if is_duplicate_title(norm_title_orig, sent_titles):
                     print(f"Skipped duplicate title: {title[:50]}")
                     continue
 
-                # چک تکراری با کلمات کلیدی
                 if is_duplicate_keywords(title, sent_titles):
                     print(f"Skipped keyword duplicate: {title[:50]}")
                     continue
 
-                # ارسال به AI
-                print(f"→ AI: {title[:60]}...")
+                # ==========================================
+                # مرحله 2: حالا ترجمه رو انجام بده
+                # ==========================================
+                print(f"→ Translating: {title[:60]}...")
                 translated_title, translated_summary, used_ai = process_with_ai(title, clean_content)
 
+                # فیلتر خطا
                 if is_error_text(translated_title) or is_error_text(translated_summary):
                     print(f"Skipped error text: {title[:50]}")
                     continue
 
-                if used_ai:
+                # اگه ترجمه انجام نشد، برای منابع خارجی سختگیرانه‌تر
+                if not is_iranian_source:
                     if is_mostly_english(translated_title):
                         print(f"Skipped untranslated: {title[:50]}")
                         continue
-                    if is_short_summary(translated_summary):
-                        print(f"Skipped short summary: {title[:50]}")
-                        continue
-                else:
-                    if not translated_summary or is_short_summary(translated_summary):
-                        if clean_content and len(clean_content) > 30:
-                            translated_summary = clean_content[:300]
-                        else:
-                            print(f"Skipped (no summary): {title[:50]}")
-                            continue
 
-                # استخراج رسانه
+                # خلاصه
+                if is_short_summary(translated_summary):
+                    if clean_content and len(clean_content) > 30:
+                        translated_summary = clean_content[:300]
+                    else:
+                        print(f"Skipped no summary: {title[:50]}")
+                        continue
+
+                # رسانه
                 video_url = extract_video_url(entry)
                 image_url = extract_image_url(entry)
 
-                # اگه RSS ویدیو نداشت، از صفحه بگیر
                 if not video_url:
                     video_url = fetch_video_from_page(link)
 
@@ -882,6 +945,10 @@ def fetch_and_send():
                     sent_titles.append(normalize_title(translated_title))
                     total_sent_this_run += 1
                     category_counts[category] = category_counts.get(category, 0) + 1
+                    if is_iranian_source:
+                        iranian_count += 1
+                    else:
+                        foreign_count += 1
                     if total_sent_this_run < MAX_POSTS_PER_RUN:
                         time.sleep(POST_DELAY_SECONDS)
                 else:
@@ -893,7 +960,7 @@ def fetch_and_send():
 
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
-    print(f"Finished. Total sent this run: {total_sent_this_run}")
+    print(f"Finished. Iranian: {iranian_count}, Foreign: {foreign_count}, Total: {total_sent_this_run}")
 
 
 if __name__ == "__main__":
