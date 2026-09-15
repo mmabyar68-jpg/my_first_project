@@ -39,10 +39,20 @@ if COHERE_API_KEY:
 if not ai_services:
     print("No AI API keys found, will use fallback translators.")
 
-# ---------- منابع ایرانی (بدون فیلتر ترجمه) ----------
+# ---------- منابع ایرانی ----------
 IRANIAN_SOURCES = [
     "Tasnim", "IRNA", "Fars", "Mehr", "ISNA", "Tabnak", "Eghtesadonline",
-    "Hamshahri", "KhabarOnline", "IMNA", "ISNA"
+    "Hamshahri", "KhabarOnline", "IMNA"
+]
+
+# ---------- منابعی که هر ران حداقل ۱ خبر بدن ----------
+REQUIRED_SOURCES = [
+    "France 24",
+    "Associated Press",
+    "CNN",
+    "RT",
+    "Al Jazeera",
+    "Al Mayadeen",
 ]
 
 # ---------- فیدها ----------
@@ -53,6 +63,7 @@ RSS_FEEDS = [
     ("Reuters", "http://feeds.reuters.com/Reuters/worldNews"),
     ("Al Jazeera", "https://www.aljazeera.com/xml/rss/all.xml"),
     ("RT", "https://www.rt.com/rss/"),
+    ("Al Mayadeen", "https://english.almayadeen.net/feed.rss"),
     ("Associated Press", "https://apnews.com/rss"),
     ("The Guardian", "https://www.theguardian.com/world/rss"),
     ("Deutsche Welle", "https://rss.dw.com/rdf/rss-en-world"),
@@ -75,6 +86,7 @@ RSS_FEEDS = [
 SENT_LINKS_FILE = "sent_links.txt"
 SENT_TITLES_FILE = "sent_titles.txt"
 
+# ---------- کلمات فوری ----------
 URGENT_KEYWORDS = [
     "جنگ", "حمله", "انفجار", "زلزله", "سیل", "آتش", "تحریم", "موشک",
     "هسته‌ای", "قتل", "ترور", "کودتا", "جنگنده", "اورژانس", "فوری",
@@ -119,6 +131,26 @@ IMPORTANT_KEYWORDS_EN = [
     "netanyahu", "zelensky", "khamenei"
 ]
 
+# ---------- کلمات کلیدی خاورمیانه و ایران (امتیاز بالا) ----------
+MIDDLE_EAST_KEYWORDS = [
+    # فارسی
+    "ایران", "تهران", "جمهوری اسلامی", "خامنه‌ای", "پزشکیان", "عراقچی",
+    "فلسطین", "غزه", "اسرائیل", "نتانیاهو", "لبنان", "حزب‌الله", "سوریه",
+    "یمن", "انصارالله", "حوثی", "عربستان", "امارات", "قطر", "عمان",
+    "بحرین", "کویت", "اردن", "مصر", "ترکیه", "اردوغان", "روسیه", "پوتین",
+    "اوکراین", "زلنسکی", "مسکو", "کرملین", "تنگه هرمز", "خلیج فارس",
+    "دریای سرخ", "باب‌المندب", "بریکس", "مقاومت", "سپاه", "قدس",
+    # انگلیسی
+    "iran", "tehran", "khamenei", "pezeshkian", "araghchi", "islamic republic",
+    "palestine", "gaza", "israel", "netanyahu", "lebanon", "hezbollah",
+    "syria", "yemen", "houthi", "saudi", "emirates", "qatar", "oman",
+    "bahrain", "kuwait", "jordan", "egypt", "turkey", "erdogan",
+    "russia", "putin", "ukraine", "zelensky", "moscow", "kremlin",
+    "hormuz", "persian gulf", "red sea", "bab el-mandeb", "brics",
+    "resistance", "irgc", "jerusalem", "middle east", "west asia"
+]
+
+# ---------- کلمات نامطلوب ----------
 EN_BLACKLIST = [
     "celebrity", "singer", "actor", "actress", "movie", "film", "sport",
     "entertainment", "gossip", "rumor", "music", "tv", "reality show",
@@ -145,30 +177,41 @@ CATEGORY_LIMITS = {
     "health": 1, "environment": 1, "other": 2,
 }
 
-# تعادل بین منابع داخلی و خارجی
 SOURCE_TYPE_LIMITS = {
-    "iranian": 5,
-    "foreign": 3,
+    "iranian": 3,
+    "foreign": 5,
 }
 
-MAX_POSTS_PER_RUN = 8
+MAX_POSTS_PER_RUN = 10
 POST_DELAY_SECONDS = 10
 
+# ---------- هشتگ‌ها با نام کامل ----------
 SOURCE_HASHTAGS = {
-    "CNN": "#سی_ان_ان", "BBC": "#بی_بی_سی", "Reuters": "#رویترز",
-    "Al Jazeera": "#الجزیره", "RT": "#راشا_تودی",
-    "Tasnim": "#تسنیم", "IRNA": "#ایرنا",
-    "Associated Press": "#آسوشیتدپرس",
-    "The Guardian": "#گاردین", "Deutsche Welle": "#دویچه_وله",
-    "France 24": "#فرانس_۲۴", "New York Times": "#نیویورک_تایمز",
-    "Fars": "#فارس", "Mehr": "#مهر", "ISNA": "#ایسنا",
-    "Tabnak": "#تابناک", "Eghtesadonline": "#اقتصادآنلاین",
-    "Hamshahri": "#همشهری", "KhabarOnline": "#خبرآنلاین",
+    "CNN": "#خبرگزاری_سی_ان_ان",
+    "BBC": "#خبرگزاری_بی_بی_سی",
+    "Reuters": "#خبرگزاری_رویترز",
+    "Al Jazeera": "#خبرگزاری_الجزیره",
+    "RT": "#خبرگزاری_راشا_تودی",
+    "Al Mayadeen": "#خبرگزاری_المیادین",
+    "Associated Press": "#خبرگزاری_آسوشیتدپرس",
+    "The Guardian": "#خبرگزاری_گاردین",
+    "Deutsche Welle": "#خبرگزاری_دویچه_وله",
+    "France 24": "#خبرگزاری_فرانس_۲۴",
+    "New York Times": "#خبرگزاری_نیویورک_تایمز",
+    "Tasnim": "#خبرگزاری_تسنیم",
+    "IRNA": "#خبرگزاری_ایرنا",
+    "Fars": "#خبرگزاری_فارس",
+    "Mehr": "#خبرگزاری_مهر",
+    "ISNA": "#خبرگزاری_ایسنا",
+    "Tabnak": "#تابناک",
+    "Eghtesadonline": "#اقتصادآنلاین",
+    "Hamshahri": "#همشهری",
+    "KhabarOnline": "#خبرآنلاین",
     "IMNA": "#ایمنا",
 }
 
 CHANNEL_LINK = f"https://t.me/{CHANNEL_ID.lstrip('@')}"
-SLOGAN = "🔔 دوز خبر؛ خبر راست و مستند از خبرگزاری‌های معتبر"
+SLOGAN = "🔔 با دوز خبر، اخبار برجسته و مهم خبرگزاری‌های فرانس ۲۴، راشا تودی، سی‌ان‌ان، الجزیره و دیگر منابع معتبر جهانی را دنبال کنید."
 
 translator = GoogleTranslator(source='auto', target='fa')
 shortener = pyshorteners.Shortener()
@@ -278,10 +321,12 @@ def is_local_news(title, translated_title="", translated_summary=""):
 
 
 def calculate_importance(title, translated_title, summary="", source=""):
+    """محاسبه امتیاز با تأکید بر اخبار ایران، روسیه و خاورمیانه"""
     score = 0
     title_text = (title + " " + translated_title).lower()
     summary_text = summary.lower()
 
+    # کلمات فارسی
     for keyword in IMPORTANT_KEYWORDS:
         if keyword in title_text:
             score += 3
@@ -292,6 +337,7 @@ def calculate_importance(title, translated_title, summary="", source=""):
         if keyword in title_text:
             score += 5
 
+    # کلمات انگلیسی (فقط برای منابع خارجی)
     if source not in IRANIAN_SOURCES:
         for keyword in IMPORTANT_KEYWORDS_EN:
             if keyword in title_text:
@@ -302,6 +348,14 @@ def calculate_importance(title, translated_title, summary="", source=""):
         for keyword in URGENT_KEYWORDS_EN:
             if keyword in title_text:
                 score += 5
+
+    # امتیاز بالا برای اخبار ایران، روسیه، خاورمیانه
+    for keyword in MIDDLE_EAST_KEYWORDS:
+        kw = keyword.lower()
+        if kw in title_text:
+            score += 8
+        elif kw in summary_text:
+            score += 3
 
     return score
 
@@ -419,11 +473,8 @@ def extract_video_url(entry):
             type_attr = enc.get('type', '').lower()
             if url and ('video' in type_attr or 'mpeg' in type_attr):
                 return url
-            if re.search(r'\.(mp4|webm|m3u8|mov)(\?|$)', url, re.IGNORECASE):
-                return url
 
     summary = entry.get('summary', entry.get('description', ''))
-
     ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', summary)
     if ap_match:
         return f"APARAT:{ap_match.group(1)}"
@@ -446,31 +497,28 @@ def extract_video_url(entry):
 
 def get_aparat_mp4(video_hash):
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        headers = {"User-Agent": "Mozilla/5.0"}
         api_url = f"https://www.aparat.com/etc/api/video/videohash/{video_hash}"
         r = requests.get(api_url, timeout=8, headers=headers)
         if r.status_code == 200:
             video = r.json().get("video", {})
             return video.get("file_url")
         return None
-    except Exception as e:
-        print(f"get_aparat_mp4 error: {e}")
+    except Exception:
         return None
 
 
 def fetch_video_from_page(url):
     try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+        headers = {"User-Agent": "Mozilla/5.0"}
         r = requests.get(url, timeout=10, headers=headers)
         if r.status_code != 200:
             return None
-
         html = r.text
 
         ap_match = re.search(r'aparat\.com/(?:v|embed/v)/([a-zA-Z0-9]+)', html)
         if ap_match:
             video_hash = ap_match.group(1)
-            print(f"  → Found Aparat: {video_hash}")
             mp4 = get_aparat_mp4(video_hash)
             return mp4 if mp4 else f"APARAT:{video_hash}"
 
@@ -483,8 +531,7 @@ def fetch_video_from_page(url):
             return mp4_match.group(0)
 
         return None
-    except Exception as e:
-        print(f"fetch_video_from_page error: {e}")
+    except Exception:
         return None
 
 
@@ -551,36 +598,21 @@ def send_video_from_link(video_url, caption):
     return False
 
 
-# ---------- ترجمه با MyMemory ----------
 def translate_via_mymemory(text, target_lang='fa'):
-    """ترجمه با MyMemory (رایگان، بدون کلید)"""
     if not text or len(text) < 2:
         return text
     try:
         text_short = text[:500]
         url = "https://api.mymemory.translated.net/get"
-        params = {
-            "q": text_short,
-            "langpair": f"en|{target_lang}"
-        }
+        params = {"q": text_short, "langpair": f"en|{target_lang}"}
         r = requests.get(url, params=params, timeout=10)
         if r.status_code == 200:
             data = r.json()
             translated = data.get("responseData", {}).get("translatedText", "")
             if translated and not is_error_text(translated):
-                if len(text) > 500:
-                    remaining = text[500:1000]
-                    params["q"] = remaining
-                    r2 = requests.get(url, params=params, timeout=10)
-                    if r2.status_code == 200:
-                        data2 = r2.json()
-                        trans2 = data2.get("responseData", {}).get("translatedText", "")
-                        if trans2:
-                            translated += " " + trans2
                 return translated
         return text
-    except Exception as e:
-        print(f"MyMemory error: {e}")
+    except Exception:
         return text
 
 
@@ -683,39 +715,32 @@ def ai_translate_and_summarize(title, content, service_name, api_key):
 
 
 def fallback_translate_and_summarize(title, content):
-    """Fallback ترجمه: Google → MyMemory"""
     translated_title = title
     translated_summary = ""
 
-    # عنوان: Google
     if title:
         try:
             t = translator.translate(title)
             if t and not is_error_text(t) and not is_mostly_english(t):
                 translated_title = t
-        except Exception as e:
-            print(f"Google title error: {e}")
+        except Exception:
+            pass
 
-    # اگه Google fail داد، MyMemory
     if is_mostly_english(translated_title):
-        print(f"  → MyMemory for title")
         mm = translate_via_mymemory(title, 'fa')
         if mm and not is_mostly_english(mm):
             translated_title = mm
 
-    # خلاصه: Google
     summary_clean = clean_html(content)
     if summary_clean and len(summary_clean) > 50:
         try:
             t = translator.translate(summary_clean[:1000])
             if t and not is_error_text(t) and not is_mostly_english(t):
                 translated_summary = t
-        except Exception as e:
-            print(f"Google summary error: {e}")
+        except Exception:
+            pass
 
-        # MyMemory
         if is_mostly_english(translated_summary) or not translated_summary:
-            print(f"  → MyMemory for summary")
             mm = translate_via_mymemory(summary_clean[:500], 'fa')
             if mm and not is_mostly_english(mm):
                 translated_summary = mm
@@ -777,6 +802,15 @@ def send_news_item(item):
     caption += f"🔗 {CHANNEL_LINK}\n\n"
     caption += SLOGAN
 
+    # سلب مسئولیت برای منابع خارجی
+    if source not in IRANIAN_SOURCES:
+        caption += (
+            f"\n\n📎 <b>منبع: {source}</b>\n"
+            f"<i>⚠️ این خبر صرفاً از منبع فوق نقل شده است. "
+            f"مسئولیت صحت یا سقم محتوای آن بر عهده منبع اصلی است "
+            f"و دوز خبر در قبال آن مسئولیتی ندارد.</i>"
+        )
+
     if video_url:
         success = send_video_from_link(video_url, caption)
         if success:
@@ -796,22 +830,174 @@ def send_news_item(item):
     return send_telegram_message(caption)
 
 
+# ---------- پردازش یک entry و ارسال ----------
+def process_entry(entry, source_name, sent_links, sent_titles, category_counts,
+                  iranian_count, foreign_count, total_sent):
+    """پردازش یک entry و ارسال در صورت تأیید. مقادیر جدید رو برمی‌گردونه"""
+    link = entry.get("link", "")
+    title = entry.get("title", "")
+    if not link or not title:
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    error_keywords = ["error", "500", "server", "not found", "404"]
+
+    if link in sent_links:
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    if any(kw in title.lower() for kw in error_keywords):
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    raw_content = entry.get("summary", entry.get("description", ""))
+    clean_content = clean_html(raw_content)
+
+    if len(clean_content.split()) < 8:
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    is_iranian_source = source_name in IRANIAN_SOURCES
+
+    if not is_iranian_source:
+        if is_unwanted(title, "", ""):
+            return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+        if is_local_news(title, "", ""):
+            return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+    else:
+        lower_title = title.lower()
+        if any(w in lower_title for w in EN_BLACKLIST):
+            return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    importance_score = calculate_importance(title, "", clean_content, source=source_name)
+    if importance_score < IMPORTANCE_THRESHOLD:
+        print(f"Skipped low importance ({importance_score}): {title[:50]}")
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    category = classify_news(title, clean_content)
+    if category_counts.get(category, 0) >= CATEGORY_LIMITS.get(category, 3):
+        print(f"Skipped category limit ({category}): {title[:50]}")
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    if is_iranian_source and iranian_count >= SOURCE_TYPE_LIMITS["iranian"]:
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+    if not is_iranian_source and foreign_count >= SOURCE_TYPE_LIMITS["foreign"]:
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    norm_title_orig = normalize_title(title)
+    if is_duplicate_title(norm_title_orig, sent_titles):
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+    if is_duplicate_keywords(title, sent_titles):
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    print(f"→ Translating: {title[:60]}...")
+    translated_title, translated_summary, used_ai = process_with_ai(title, clean_content)
+
+    if is_error_text(translated_title) or is_error_text(translated_summary):
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    if not is_iranian_source:
+        if is_mostly_english(translated_title):
+            return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    if is_short_summary(translated_summary):
+        if clean_content and len(clean_content) > 30:
+            translated_summary = clean_content[:300]
+        else:
+            return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+    video_url = extract_video_url(entry)
+    image_url = extract_image_url(entry)
+    if not video_url:
+        video_url = fetch_video_from_page(link)
+
+    news_item = {
+        "title": translated_title,
+        "summary": translated_summary,
+        "link": link,
+        "source": source_name,
+        "category": category,
+        "image_url": image_url,
+        "video_url": video_url,
+    }
+
+    success = send_news_item(news_item)
+    if success:
+        print(f"✓ Sent: {translated_title[:50]}")
+        sent_links.add(link)
+        sent_titles.append(normalize_title(translated_title))
+        category_counts[category] = category_counts.get(category, 0) + 1
+        if is_iranian_source:
+            iranian_count += 1
+        else:
+            foreign_count += 1
+        total_sent += 1
+        return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, True
+    return sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent, False
+
+
 def fetch_and_send():
     sent_links = load_set_from_file(SENT_LINKS_FILE)
     sent_titles = load_list_from_file(SENT_TITLES_FILE)
-
-    error_keywords = ["error", "500", "server", "not found", "404"]
 
     total_sent_this_run = 0
     category_counts = {}
     iranian_count = 0
     foreign_count = 0
 
+    # ==========================================
+    # مرحله 1: تضمین حداقل ۱ خبر از خبرگزاری‌های مهم
+    # ==========================================
+    print("\n=== Phase 1: Required Sources ===")
+    for required_source in REQUIRED_SOURCES:
+        if total_sent_this_run >= MAX_POSTS_PER_RUN:
+            break
+
+        # فید مربوطه رو پیدا کن
+        feed_url = None
+        for src_name, url in RSS_FEEDS:
+            if src_name == required_source:
+                feed_url = url
+                break
+
+        if not feed_url:
+            print(f"Required source not found: {required_source}")
+            continue
+
+        print(f"\n→ Checking required source: {required_source}")
+        try:
+            feed = feedparser.parse(feed_url)
+        except Exception as e:
+            print(f"Feed error: {e}")
+            continue
+
+        if feed.bozo or not feed.entries:
+            continue
+
+        sent_from_this_source = False
+        # تلاش از ۱۰ خبر اول
+        for entry in feed.entries[:10]:
+            if sent_from_this_source:
+                break
+            if total_sent_this_run >= MAX_POSTS_PER_RUN:
+                break
+
+            sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent_this_run, was_sent = process_entry(
+                entry, required_source, sent_links, sent_titles, category_counts,
+                iranian_count, foreign_count, total_sent_this_run
+            )
+            if was_sent:
+                sent_from_this_source = True
+                time.sleep(POST_DELAY_SECONDS)
+
+        if not sent_from_this_source:
+            print(f"✗ No valid news from {required_source}")
+
+    # ==========================================
+    # مرحله 2: بقیه اخبار (به ترتیب عادی)
+    # ==========================================
+    print("\n=== Phase 2: Regular Sources ===")
     for source_name, feed_url in RSS_FEEDS:
         if total_sent_this_run >= MAX_POSTS_PER_RUN:
             break
 
-        print(f"Checking feed: {source_name}")
+        print(f"\nChecking feed: {source_name}")
         try:
             feed = feedparser.parse(feed_url)
         except Exception as e:
@@ -821,146 +1007,20 @@ def fetch_and_send():
         if feed.bozo or not feed.entries:
             continue
 
-        is_iranian_source = source_name in IRANIAN_SOURCES
-
-        for entry in feed.entries:
+        for entry in feed.entries[:5]:
             if total_sent_this_run >= MAX_POSTS_PER_RUN:
                 break
 
-            try:
-                link = entry.get("link", "")
-                title = entry.get("title", "")
-                if not link or not title:
-                    continue
-
-                # ==========================================
-                # مرحله 1: فیلترهای ارزان (بدون AI، بدون ترجمه)
-                # ==========================================
-
-                if link in sent_links:
-                    print(f"Skipped duplicate link: {title[:50]}")
-                    continue
-
-                if any(kw in title.lower() for kw in error_keywords):
-                    continue
-
-                raw_content = entry.get("summary", entry.get("description", ""))
-                clean_content = clean_html(raw_content)
-
-                if len(clean_content.split()) < 8:
-                    print(f"Skipped short content: {title[:50]}")
-                    continue
-
-                # فیلترهای نامطلوب فقط برای منابع خارجی
-                if not is_iranian_source:
-                    if is_unwanted(title, "", ""):
-                        print(f"Skipped unwanted: {title[:50]}")
-                        continue
-                    if is_local_news(title, "", ""):
-                        print(f"Skipped local: {title[:50]}")
-                        continue
-                else:
-                    # برای ایرانی، فقط blacklist عمومی
-                    lower_title = title.lower()
-                    if any(w in lower_title for w in EN_BLACKLIST):
-                        print(f"Skipped blacklist: {title[:50]}")
-                        continue
-
-                # امتیاز اهمیت (قبل از ترجمه)
-                importance_score = calculate_importance(title, "", clean_content, source=source_name)
-                if importance_score < IMPORTANCE_THRESHOLD:
-                    print(f"Skipped low importance ({importance_score}): {title[:50]}")
-                    continue
-
-                # دسته‌بندی
-                category = classify_news(title, clean_content)
-                if category_counts.get(category, 0) >= CATEGORY_LIMITS.get(category, 3):
-                    print(f"Skipped category limit ({category}): {title[:50]}")
-                    continue
-
-                # چک سقف منابع (تعادل داخلی/خارجی)
-                if is_iranian_source and iranian_count >= SOURCE_TYPE_LIMITS["iranian"]:
-                    print(f"Skipped (Iranian quota): {title[:50]}")
-                    continue
-                if not is_iranian_source and foreign_count >= SOURCE_TYPE_LIMITS["foreign"]:
-                    print(f"Skipped (Foreign quota): {title[:50]}")
-                    continue
-
-                # چک تکراری عنوان (روی عنوان اصلی)
-                norm_title_orig = normalize_title(title)
-                if is_duplicate_title(norm_title_orig, sent_titles):
-                    print(f"Skipped duplicate title: {title[:50]}")
-                    continue
-
-                if is_duplicate_keywords(title, sent_titles):
-                    print(f"Skipped keyword duplicate: {title[:50]}")
-                    continue
-
-                # ==========================================
-                # مرحله 2: حالا ترجمه رو انجام بده
-                # ==========================================
-                print(f"→ Translating: {title[:60]}...")
-                translated_title, translated_summary, used_ai = process_with_ai(title, clean_content)
-
-                # فیلتر خطا
-                if is_error_text(translated_title) or is_error_text(translated_summary):
-                    print(f"Skipped error text: {title[:50]}")
-                    continue
-
-                # اگه ترجمه انجام نشد، برای منابع خارجی سختگیرانه‌تر
-                if not is_iranian_source:
-                    if is_mostly_english(translated_title):
-                        print(f"Skipped untranslated: {title[:50]}")
-                        continue
-
-                # خلاصه
-                if is_short_summary(translated_summary):
-                    if clean_content and len(clean_content) > 30:
-                        translated_summary = clean_content[:300]
-                    else:
-                        print(f"Skipped no summary: {title[:50]}")
-                        continue
-
-                # رسانه
-                video_url = extract_video_url(entry)
-                image_url = extract_image_url(entry)
-
-                if not video_url:
-                    video_url = fetch_video_from_page(link)
-
-                news_item = {
-                    "title": translated_title,
-                    "summary": translated_summary,
-                    "link": link,
-                    "source": source_name,
-                    "category": category,
-                    "image_url": image_url,
-                    "video_url": video_url,
-                }
-
-                success = send_news_item(news_item)
-                if success:
-                    print(f"✓ Sent: {translated_title[:50]}")
-                    sent_links.add(link)
-                    sent_titles.append(normalize_title(translated_title))
-                    total_sent_this_run += 1
-                    category_counts[category] = category_counts.get(category, 0) + 1
-                    if is_iranian_source:
-                        iranian_count += 1
-                    else:
-                        foreign_count += 1
-                    if total_sent_this_run < MAX_POSTS_PER_RUN:
-                        time.sleep(POST_DELAY_SECONDS)
-                else:
-                    print(f"✗ Failed: {title[:50]}")
-
-            except Exception as e:
-                print(f"Error processing entry: {e}")
-                continue
+            sent_links, sent_titles, category_counts, iranian_count, foreign_count, total_sent_this_run, was_sent = process_entry(
+                entry, source_name, sent_links, sent_titles, category_counts,
+                iranian_count, foreign_count, total_sent_this_run
+            )
+            if was_sent:
+                time.sleep(POST_DELAY_SECONDS)
 
     save_set_to_file(SENT_LINKS_FILE, sent_links)
     save_list_to_file(SENT_TITLES_FILE, sent_titles)
-    print(f"Finished. Iranian: {iranian_count}, Foreign: {foreign_count}, Total: {total_sent_this_run}")
+    print(f"\nFinished. Iranian: {iranian_count}, Foreign: {foreign_count}, Total: {total_sent_this_run}")
 
 
 if __name__ == "__main__":
